@@ -1,0 +1,22 @@
+server:
+  endpoint: "opc.tcp://0.0.0.0:4840/test/server/"
+  name: "Test OPC UA Server"
+  uri: "http://example.org/UA/"
+
+namespaces:
+  - name: "DataCollectors"
+    objects:
+      - name: "Temperature"
+        type: "double"
+        initial_value: 0.0
+        access: "rw"  # read-write
+      - name: "Pressure"
+        type: "double"
+        initial_value: 0.0
+        access: "r"   # read-only
+  - name: "Controls"
+    objects:
+      - name: "Valve"
+        type: "bool"
+        initial_value: false
+        access: "rw"
