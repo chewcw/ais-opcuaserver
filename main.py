@@ -44,8 +44,7 @@ async def shutdown(server: OPCUAGatewayServer, signal=None):
 
 
 async def main():
-    server = OPCUAGatewayServer()
-    await server.init(Path("config.yaml"))
+    server = OPCUAGatewayServer(Path("config.yaml"))
 
     # Handle signals
     loop = asyncio.get_running_loop()
@@ -63,7 +62,7 @@ async def main():
         loop.add_signal_handler(s, lambda s=s: signal_handler(s))
 
     # Create the simulator task before starting the server
-    asyncio.create_task(value_simulator(server))
+    # asyncio.create_task(value_simulator(server))
 
     # Start the server
     await server.start()

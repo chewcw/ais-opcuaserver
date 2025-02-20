@@ -1,0 +1,223 @@
+database:
+  # sqlite ---------------------------------------------------------------------- 
+  type: "sqlite"
+  path: "/workspace/rnd/asusiot/sensor_data_new.db"
+  # postgresql ------------------------------------------------------------------ 
+  # type: "postgresql"
+  # host: "localhost"
+  # port: 5432
+  # database: "measurements"
+  # user: "user"
+  # password: "password"
+  polling_interval_in_second: 10
+
+  tables:
+    - name: "vibration_data"
+      columns:
+        - name: id
+          data_type: INTEGER
+        - name: timestamp
+          data_type: TEXT
+        - name: sensor_name
+          data_type: TEXT
+        - name: data_type
+          data_type: INTEGER
+        - name: json_value
+          data_type: TEXT
+
+  tag:
+    - map_logic:
+        operator: "or"
+        conditions:
+          - operator: "and"
+            conditions:
+              - column: "data_type"
+                operator: "eq"
+                value: 9
+      table_map: "vibration_data"
+      column_map: "sensor_name"
+      opcua_folder_name: "fft"
+    - map_logic:
+        operator: "or"
+        conditions:
+          - operator: "and"
+            conditions:
+              - column: "data_type"
+                operator: "eq"
+                value: 72
+      table_map: "vibration_data"
+      column_map: "sensor_name"
+      opcua_folder_name: "raw_data_and_fft"
+
+opcua:
+  namespace: "this_is_a_namespace"
+  tag:
+    - folder_name: "fft"
+      child_node:
+        - name: "timestamp"
+          type: "string"
+          description: "Timestamp of the tag"
+          access: "r"
+          table_map: vibration_data
+          column_map: timestamp
+        - name: "name"
+          type: "string"
+          description: "Name of the tag"
+          access: "r"
+          table_map: vibration_data
+          column_map: sensor_name
+        - name: "json_value"
+          type: "json_string"
+          description: "JSON value of the tag"
+          access: "r"
+          table_map: vibration_data
+          column_map: json_value
+          objects:
+            - name: "data_type_name"
+              type: "string"
+              description: "Data Type Name"
+              access: "r"
+            - name: "data_length"
+              type: "integer"
+              description: "data_length"
+              access: "r"
+    - folder_name: "raw_data_and_fft"
+      child_node:
+        - name: "timestamp"
+          type: "string"
+          description: "Timestamp of the tag"
+          access: "r"
+          table_map: vibration_data
+          column_map: timestamp
+        - name: "name"
+          type: "string"
+          description: "Name of the tag"
+          access: "r"
+          table_map: vibration_data
+          column_map: sensor_name
+        - name: "json_value"
+          type: "json_string"
+          description: "JSON value of the tag"
+          access: "r"
+          table_map: vibration_data
+          column_map: json_value
+          objects:
+            - name: "data_type_name"
+              type: "string"
+              description: "Data Type Name"
+              access: "r"
+            - name: "data_length"
+              type: "integer"
+              description: "data_length"
+              access: "r"
+
+  # 0:fft.S9IMP6000067BSF.timestamp
+  # 0:fft.S9IMP6000067BSF.name
+  # 0:raw_data_oa_only.S9IMP6000067BSF.timestamp
+  # 0:raw_data_oa_only.S9IMP6000067BSF.name
+
+  # namespaces:
+  #   - name: vibration_data
+  #     objects:
+  #       - name: "timestamp"
+  #         type: "string"
+  #         description: "Timestamp of the tag"
+  #         access: "r"
+  #         column_map: timestamp
+  #       - name: "name"
+  #         type: "string"
+  #         description: "Name of the tag"
+  #         access: "r"
+  #         column_map: sensor_name
+  #       - name: "json_value"
+  #         type: "json_string"
+  #         description: "JSON value of the tag"
+  #         access: "r"
+  #         column_map: json_value
+  #         objects:
+  #           - name: "data_type_name"
+  #             type: "string"
+  #             description: "Data Type Name"
+  #             access: "r"
+  #           - name: "data_length"
+  #             type: "integer"
+  #             description: "data_length"
+  #             access: "r"
+  #           - name: "timestamp"
+  #             type: "string"
+  #             description: "timestamp"
+  #             access: "r"
+  #           - name: "fft_result"
+  #             type: "integer"
+  #             description: "fft_result"
+  #             access: "r"
+  #           - name: "battery_level"
+  #             type: "integer"
+  #             description: "battery_level"
+  #             access: "r"
+  #           - name: "adcavg"
+  #             type: "integer"
+  #             description: "adcavg"
+  #             access: "r"
+  #           - name: "adclast"
+  #             type: "integer"
+  #             description: "adclast"
+  #             access: "r"
+  #           - name: "temperature"
+  #             type: "double"
+  #             description: "temperature"
+  #             access: "r"
+  #           - name: "oa_x"
+  #             type: "double"
+  #             description: "oa_x"
+  #             access: "r"
+  #           - name: "oa_y"
+  #             type: "double"
+  #             description: "oa_y"
+  #             access: "r"
+  #           - name: "oa_z"
+  #             type: "double"
+  #             description: "oa_z"
+  #             access: "r"
+  #           - name: "freq_resolution"
+  #             type: "double"
+  #             description: "freq_resolution"
+  #             access: "r"
+  #           - name: "report_len"
+  #             type: "integer"
+  #             description: "report_len"
+  #             access: "r"
+  #           - name: "acceleration_data"
+  #             type: "object"
+  #             description: "acceleration_data"
+  #             access: "r"
+  #             objects:
+  #               - name: "x"
+  #                 type: "array_double"
+  #                 description: "x"
+  #                 access: "r"
+  #               - name: "y"
+  #                 type: "array_double"
+  #                 description: "y"
+  #                 access: "r"
+  #               - name: "z"
+  #                 type: "array_double"
+  #                 description: "z"
+  #                 access: "r"
+  #           - name: "velocity_data"
+  #             type: "object"
+  #             description: "velocity_data"
+  #             access: "r"
+  #             objects:
+  #               - name: "x"
+  #                 type: "array_double"
+  #                 description: "x"
+  #                 access: "r"
+  #               - name: "y"
+  #                 type: "array_double"
+  #                 description: "y"
+  #                 access: "r"
+  #                 - name: "z"
+  #                   type: "array_double"
+  #                   description: "z"
+  #                   access: "r"

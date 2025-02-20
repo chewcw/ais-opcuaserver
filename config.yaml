@@ -2,21 +2,14 @@ server:
   endpoint: "opc.tcp://0.0.0.0:4840/test/server/"
   name: "Test OPC UA Server"
   uri: "http://example.org/UA/"
+  security_mode: "None" # Optional: None, Sign, SignAndEncrypt
+  security_policy: "None"  # Optional: None, Basic128Rsa15, Basic256, Basic256Sha256
+  certificate_path: "certs/cert.pem"  # Optional
+  private_key_path: "certs/key.pem"  # Optional
+  max_client: 100
+  max_subscription_lifetime: 3600
+  discovery_registration_interval: 60
 
-namespaces:
-  - name: "DataCollectors"
-    objects:
-      - name: "Temperature"
-        type: "double"
-        initial_value: 0.0
-        access: "rw"  # read-write
-      - name: "Pressure"
-        type: "double"
-        initial_value: 0.0
-        access: "r"   # read-only
-  - name: "Controls"
-    objects:
-      - name: "Valve"
-        type: "bool"
-        initial_value: false
-        access: "rw"
+plugins:
+  - name: aissens_sqldb
+    path: "plugins/aissens_sqldb/AissensSqlDb.py"
