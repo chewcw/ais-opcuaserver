@@ -1,8 +1,8 @@
 import asyncio
 import logging
 import queue
-from pathlib import Path
 import threading
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 import yaml
@@ -201,45 +201,6 @@ class OPCUAGatewayServer:
         subscription = await self.server.create_subscription(100, handler)
         await subscription.subscribe_data_change(node)
 
-    # async def create_variable2(
-    #     self, parent_node: Node, ns_idx: int, obj_config: NodeConfig
-    # ):
-    #     """Create a variable node with configuration"""
-    #     if obj_config.type.lower() == "object":
-    #         # Create a folder for objects
-    #         node = await parent_node.add_folder(ns_idx, obj_config.name)
-    #
-    #         # Create child nodes if they exist
-    #         if hasattr(obj_config, "children"):
-    #             for child_config in obj_config.children:
-    #                 await self.create_variable(node, ns_idx, child_config)
-    #     else:
-    #         # Create regular variable node
-    #         node = await parent_node.add_variable(
-    #             ns_idx,
-    #             obj_config.name,
-    #             obj_config.initial_value,
-    #             datatype=self.get_ua_type(obj_config.type),
-    #         )
-    #
-    #         # Set access level
-    #         access = obj_config.access.lower()
-    #         if access == "rw":
-    #             await node.set_writable(True)
-    #         elif access == "r":
-    #             await node.set_writable(False)
-    #
-    #     # Store node reference with full path
-    #     parent_path = await self.get_node_path(parent_node)
-    #     full_path = f"{parent_path}.{obj_config.name}"
-    #     self.nodes[full_path] = node
-    #
-    #     # Create subscription with proper handler
-    #     if obj_config.type.lower() != "object":
-    #         handler = DataChangeHandler(full_path)
-    #         subscription = await self.server.create_subscription(100, handler)
-    #         await subscription.subscribe_data_change(node)
-
     async def register_namespace(self, namespace: str) -> int:
         """Register a new namespace
 
@@ -299,7 +260,7 @@ class OPCUAGatewayServer:
 
         return folder
 
-    async def _create_or_get_node(
+    async def create_or_get_folder_node(
         self, parent_node: Node, name: str, ns_idx: int
     ) -> Node:
         """Create a new node or get existing node.
@@ -410,28 +371,6 @@ class OPCUAGatewayServer:
         # Normalize the path (handle multiple dots)
         full_path = ".".join(part for part in full_path.split(".") if part)
         self.data_queue.put((full_path, value))
-
-    async def value_updater(self):
-        """Background task to update node values"""
-        while True:
-            while not self.data_queue.empty():
-                full_path, value = self.data_queue.get()
-                print(f"Processing update for {full_path}")  # Debug line
-
-                node = None
-                if full_path in self.nodes:
-                    node = self.nodes[full_path]
-
-                if node:
-                    try:
-                        await node.write_value(value)
-                        print(f"Updated {full_path} with value: {value}")
-                    except ua.UaError as e:
-                        print(f"Error updating {full_path}: {e}")
-                else:
-                    print(f"Node not found: {full_path}")  # Debug line
-
-            await asyncio.sleep(0.1)
 
     async def start(self):
         """Start the OPC UA server"""

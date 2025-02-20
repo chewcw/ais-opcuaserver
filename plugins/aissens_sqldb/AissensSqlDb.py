@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import psycopg2
 import yaml
-from asyncua import Node
 from psycopg2.extras import DictCursor
 
 from plugins.aissens_sqldb.map_validator import MapValidator
@@ -311,16 +310,6 @@ class Plugin(PluginInterface):
                 print(f"Error in plugin loop: {e}")
                 await asyncio.sleep(1)
 
-    async def _initialize_root_nodes(self, server):
-        """Initialize the node structure once during startup"""
-        namespace = self.opcua_config["namespace"]
-        ns_idx = server.get_namespace_index(namespace)
-
-        for opcua_tag in self.opcua_tag_config:
-            await server._create_or_get_node(
-                server.server.nodes.objects, opcua_tag["folder_name"], ns_idx
-            )
-
     async def _process_row_data(self, row_data: dict, table_name: str, server: Any):
         """Process a single row of data against configuration"""
         namespace = self.opcua_config["namespace"]
@@ -355,12 +344,12 @@ class Plugin(PluginInterface):
 
             if folder_config:
                 # Create main folder node
-                folder_node = await server._create_or_get_node(
+                folder_node = await server.create_or_get_folder_node(
                     server.server.nodes.objects, folder_config["folder_name"], ns_idx
                 )
 
                 # Create tag node under folder
-                tag_node = await server._create_or_get_node(
+                tag_node = await server.create_or_get_folder_node(
                     folder_node, tag_name, ns_idx
                 )
 
@@ -378,7 +367,7 @@ class Plugin(PluginInterface):
 
                         if node_type == "json_string":
                             # Create a folder node for JSON type
-                            json_folder = await server._create_or_get_node(
+                            json_folder = await server.create_or_get_folder_node(
                                 tag_node, child_node["name"], ns_idx
                             )
 
@@ -433,47 +422,6 @@ class Plugin(PluginInterface):
                                 tag_node, child_node, ns_idx, value
                             )
                             server.update_value(namespace, base_path, value)
-
-    async def _process_json_node(
-        self,
-        server: Any,
-        parent_node: Node,
-        node_config: dict,
-        ns_idx: int,
-        json_value: str,
-    ) -> None:
-        try:
-            # Create the main JSON string node
-            json_node = await server.create_variable_node(
-                parent_node, node_config, ns_idx, json_value
-            )
-
-            # Parse JSON value
-            data = json.loads(json_value) if isinstance(json_value, str) else json_value
-
-            # Process sub-objects
-            if "objects" in node_config:
-                for obj_config in node_config["objects"]:
-                    obj_name = obj_config["name"]
-                    value = data.get(obj_name)
-
-                    if value is not None:
-                        await server.create_variable_node(
-                            json_node,
-                            {
-                                "name": obj_name,
-                                "type": obj_config["type"],
-                                "description": obj_config["description"],
-                                "access": obj_config["access"],
-                            },
-                            ns_idx,
-                            value,
-                        )
-
-        except json.JSONDecodeError as e:
-            print(f"Error decoding JSON value: {e}")
-        except Exception as e:
-            print(f"Error processing JSON node {node_config['name']}: {e}")
 
     async def stop(self):
         """Stop the plugin and cleanup"""
