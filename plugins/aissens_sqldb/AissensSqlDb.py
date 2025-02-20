@@ -381,7 +381,7 @@ class Plugin(PluginInterface):
                                     )
 
                                     # Create/update raw_data node
-                                    await server.create_variable_node(
+                                    await server.create_or_get_variable_node(
                                         json_folder,
                                         {
                                             "name": "raw_data",
@@ -399,7 +399,7 @@ class Plugin(PluginInterface):
                                             obj_value = data.get(obj_name)
                                             if obj_value is not None:
                                                 # Create/update variable node
-                                                await server.create_variable_node(
+                                                await server.create_or_get_variable_node(
                                                     json_folder,
                                                     {
                                                         "name": obj_name,
@@ -418,7 +418,7 @@ class Plugin(PluginInterface):
                                     )
                         else:
                             # Create/update regular variable node
-                            await server.create_variable_node(
+                            await server.create_or_get_variable_node(
                                 tag_node, child_node, ns_idx, value
                             )
                             server.update_value(namespace, base_path, value)

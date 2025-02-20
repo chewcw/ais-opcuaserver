@@ -289,10 +289,10 @@ class OPCUAGatewayServer:
             print(f"Error creating/getting node {name}: {e}")
             raise
 
-    async def create_variable_node(
+    async def create_or_get_variable_node(
         self, parent_node: Node, node_config: dict, ns_idx: int, value: Any = None
     ) -> Node:
-        """Create a variable node based on configuration
+        """Create a variable node based on configuration or get existing one
 
         Args:
             parent_node: Parent node
@@ -301,34 +301,52 @@ class OPCUAGatewayServer:
             value: Initial value for the variable
 
         Returns:
-            Node: Created variable node
+            Node: Created or existing variable node
         """
-        node_type = node_config.get("type", "string")
+        try:
+            # First try to find existing node by browsename
+            for child in await parent_node.get_children():
+                browse_name = await child.read_browse_name()
+                if (
+                    browse_name.Name == node_config["name"]
+                    and browse_name.NamespaceIndex == ns_idx
+                ):
+                    # Update value if provided
+                    if value is not None:
+                        await child.write_value(value)
+                    return child
 
-        # Map node types to UA types
-        type_mapping = {
-            "string": ua.VariantType.String,
-            "integer": ua.VariantType.Int32,
-            "double": ua.VariantType.Double,
-            "json_string": ua.VariantType.String,
-            "bool": ua.VariantType.Boolean,
-        }
+            # If not found, create new variable node
+            node_type = node_config.get("type", "string")
 
-        ua_type = type_mapping.get(node_type, ua.VariantType.String)
+            # Map node types to UA types
+            type_mapping = {
+                "string": ua.VariantType.String,
+                "integer": ua.VariantType.Int32,
+                "double": ua.VariantType.Double,
+                "json_string": ua.VariantType.String,
+                "bool": ua.VariantType.Boolean,
+            }
 
-        # Create variable node
-        node = await parent_node.add_variable(
-            ns_idx,
-            node_config["name"],
-            value if value is not None else "",
-            ua_type,
-        )
+            ua_type = type_mapping.get(node_type, ua.VariantType.String)
 
-        # Set access level based on configuration
-        if node_config.get("access") == "rw":
-            await node.set_writable(True)
+            # Create variable node
+            node = await parent_node.add_variable(
+                ns_idx,
+                node_config["name"],
+                value if value is not None else "",
+                ua_type,
+            )
 
-        return node
+            # Set access level based on configuration
+            if node_config.get("access") == "rw":
+                await node.set_writable(True)
+
+            return node
+
+        except ua.UaError as e:
+            print(f"Error creating/getting variable node {node_config['name']}: {e}")
+            raise
 
     async def get_node_path(self, node: Node) -> str:
         """Get the full path of a node in string format (e.g. 'Objects.MyFolder.MyVariable')
