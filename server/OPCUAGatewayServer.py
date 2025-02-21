@@ -134,10 +134,11 @@ class OPCUAGatewayServer:
         server_node = self.server.get_node(ua.NodeId(ua.Int32(ua.ObjectIds.Server)))
 
         # Set server name using proper node
-        name_node = await server_node.get_child(
-            ["0:ServerStatus", "0:BuildInfo", "0:ProductName"]
-        )
-        await name_node.write_value(server_config["name"])
+        # name_node = await server_node.get_child(
+        # ["0:ServerStatus", "0:BuildInfo", "0:ProductName"]
+        # )
+        self.server.set_server_name(server_config["name"])
+        # await name_node.write_value(server_config["name"])
 
     async def init_namespace(self, ns_config: NamespaceConfig):
         """Initialize a namespace and its objects"""
@@ -316,36 +317,162 @@ class OPCUAGatewayServer:
                         await child.write_value(value)
                     return child
 
-            # If not found, create new variable node
-            node_type = node_config.get("type", "string")
-
-            # Map node types to UA types
+            # Map configuration node type to UA types
+            # The key is the type name in the configuration, the value is the corresponding UA type
             type_mapping = {
-                "string": ua.VariantType.String,
-                "integer": ua.VariantType.Int32,
-                "double": ua.VariantType.Double,
-                "json_string": ua.VariantType.String,
-                "bool": ua.VariantType.Boolean,
+                # Scalar types
+                "boolean": ua.VariantType.Boolean,  # 1
+                "sbyte": ua.VariantType.SByte,  # 2
+                "byte": ua.VariantType.Byte,  # 3
+                "int16": ua.VariantType.Int16,  # 4
+                "uint16": ua.VariantType.UInt16,  # 5
+                "int32": ua.VariantType.Int32,  # 6
+                "uint32": ua.VariantType.UInt32,  # 7
+                "int64": ua.VariantType.Int64,  # 8
+                "uint64": ua.VariantType.UInt64,  # 9
+                "float": ua.VariantType.Float,  # 10
+                "double": ua.VariantType.Double,  # 11
+                "string": ua.VariantType.String,  # 12
+                "datetime": ua.VariantType.DateTime,  # 13
+                "variant": ua.VariantType.Variant,  # 24
+                "extension_object": ua.VariantType.ExtensionObject,  # 22
+                # Array types
+                "array_float": ua.VariantType.Float,
+                "array_double": ua.VariantType.Double,
+                "array_int32": ua.VariantType.Int32,
+                "array_int64": ua.VariantType.Int64,
             }
 
-            ua_type = type_mapping.get(node_type, ua.VariantType.String)
+            # Determine data type
+            node_type = node_config.get("type", "string").lower()
+            if node_type.startswith("array_"):
+                # Print out the base data type of the first item in the array
+                # print(
+                # f"Creating array node {node_config['name']} with type {type(value[0])}"
+                # )
 
-            # Create variable node
-            node = await parent_node.add_variable(
-                ns_idx,
-                node_config["name"],
-                value if value is not None else "",
-                ua_type,
-            )
+                # Get base type for array
+                base_type = node_type.replace("array_", "")
+                # Map the base types to UA types
+                # array_type_mapping = {
+                # "double": ua.VariantType.Double,
+                # "float": ua.VariantType.Float,
+                # "int32": ua.VariantType.Int32,
+                # "int64": ua.VariantType.Int64,
+                # "string": ua.VariantType.String,
+                # }
+                # ua_type = array_type_mapping.get(base_type, ua.VariantType.Variant)
+                ua_type = type_mapping.get(base_type, ua.VariantType.Variant)
+                # print(
+                #     f"DEBUG: Creating array node '{node_config['name']}' with base type '{base_type}' mapped to {ua_type}"
+                # )
+
+                # Create the variable node with an empty list as initial value
+                node = await parent_node.add_variable(
+                    ns_idx,
+                    node_config["name"],
+                    [],
+                    varianttype=ua_type,
+                )
+                # Mark as a one-dimensional array
+                await node.write_value_rank(1)
+
+                # print(
+                # f"DEBUG: Node {node_config['name']} type '{node_config['type']}' expecting {ua_type}."
+                # )
+                # for i, x in enumerate(value):
+                # if i < 2:
+                # print(f"DEBUG: Value[{i}] = {x}, type = {type(x)}")
+
+                if value is not None and isinstance(value, (list, tuple)):
+                    # # Use explicit conversion for "array_float" to get 32-bit float values.
+                    # if ua_type == ua.VariantType.Float:
+                    #     converted_value = [ctypes.c_float(x).value for x in value]
+                    # elif ua_type == ua.VariantType.Double:
+                    #     converted_value = [float(x) for x in value]
+                    # elif ua_type in (ua.VariantType.Int32, ua.VariantType.Int64):
+                    #     converted_value = [int(x) for x in value]
+                    # elif ua_type == ua.VariantType.String:
+                    #     converted_value = [str(x) for x in value]
+                    # else:
+                    # converted_value = list(value)
+                    await node.write_array_dimensions(len(value))
+                    # await node.write_value(ua.Variant(value, ua_type))
+                    # print(f"DEBUG: ua_type = {ua_type}")
+                    await node.write_value(value, ua_type)
+
+            # is_array = node_type.startswith("array_")
+            # ua_type = type_mapping.get(node_type, ua.VariantType.Variant)
+
+            # if is_array:
+            #     # Debug print
+            #     print(
+            #         f"Creating node {node_config['name']}: type={node_type}, ua_type={ua_type}, is_array={is_array}"
+            #     )
+            #
+            #     # Create variable node first
+            #     node = await parent_node.add_variable(
+            #         ns_idx,
+            #         node_config["name"],
+            #         [],  # Always start with empty array for array types
+            #         varianttype=ua_type,
+            #         datatype=ua_type,
+            #     )
+            #     # Set array properties
+            #     await node.write_value_rank(1)  # 1 for one-dimensional array
+            #
+            #     # Write the actual value if provided
+            #     if value is not None and isinstance(value, (list, tuple)):
+            #         await node.write_array_dimensions(len(value))
+            #
+            #         # Convert array elements to correct type
+            #         converted_value = value
+            #         if ua_type in (ua.VariantType.Float, ua.VariantType.Double):
+            #             converted_value = [float(x) for x in value]
+            #         elif ua_type == ua.VariantType.Int32:
+            #             converted_value = [int(x) for x in value]
+            #         elif ua_type == ua.VariantType.Int64:
+            #             converted_value = [int(x) for x in value]
+            #         await node.write_value(value)
+            else:
+                # Handle scalar types
+                # type_mapping = {
+                #     "boolean": ua.VariantType.Boolean,
+                #     "sbyte": ua.VariantType.SByte,
+                #     "byte": ua.VariantType.Byte,
+                #     "int16": ua.VariantType.Int16,
+                #     "uint16": ua.VariantType.UInt16,
+                #     "int32": ua.VariantType.Int32,
+                #     "uint32": ua.VariantType.UInt32,
+                #     "int64": ua.VariantType.Int64,
+                #     "uint64": ua.VariantType.UInt64,
+                #     "float": ua.VariantType.Float,
+                #     "double": ua.VariantType.Double,
+                #     "string": ua.VariantType.String,
+                #     "datetime": ua.VariantType.DateTime,
+                #     "variant": ua.VariantType.Variant,
+                # }
+                ua_type = type_mapping.get(node_type, ua.VariantType.Variant)
+                # print(ua_type)
+                if value is None:
+                    value = "" if ua_type == ua.VariantType.String else 0
+
+                node = await parent_node.add_variable(
+                    ns_idx,
+                    node_config["name"],
+                    value,
+                    varianttype=ua_type,
+                    datatype=ua_type,
+                )
 
             # Set access level based on configuration
-            if node_config.get("access") == "rw":
+            if node_config.get("access", "r").lower() == "rw":
                 await node.set_writable(True)
 
             return node
 
-        except ua.UaError as e:
-            print(f"Error creating/getting variable node {node_config['name']}: {e}")
+        except ua.UaError:
+            # print(f"Error creating/getting variable node {node_config['name']}: {e}")
             raise
 
     async def get_node_path(self, node: Node) -> str:

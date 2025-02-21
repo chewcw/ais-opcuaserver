@@ -372,56 +372,122 @@ class Plugin(PluginInterface):
                             )
 
                             if value:
-                                try:
-                                    # Parse JSON data
-                                    data = (
-                                        json.loads(value)
-                                        if isinstance(value, str)
-                                        else value
-                                    )
-
-                                    # Create/update raw_data node
-                                    await server.create_or_get_variable_node(
-                                        json_folder,
-                                        {
-                                            "name": "raw_data",
-                                            "type": "string",
-                                            "access": child_node["access"],
-                                        },
-                                        ns_idx,
-                                        value,
-                                    )
-
-                                    # Create/update nodes for each object in JSON
-                                    if "objects" in child_node:
-                                        for obj_config in child_node["objects"]:
-                                            obj_name = obj_config["name"]
-                                            obj_value = data.get(obj_name)
-                                            if obj_value is not None:
-                                                # Create/update variable node
-                                                await server.create_or_get_variable_node(
-                                                    json_folder,
-                                                    {
-                                                        "name": obj_name,
-                                                        "type": obj_config["type"],
-                                                        "access": obj_config["access"],
-                                                    },
-                                                    ns_idx,
-                                                    obj_value,
-                                                )
-
-                                except json.JSONDecodeError as e:
-                                    print(f"Error decoding JSON value: {e}")
-                                except Exception as e:
-                                    print(
-                                        f"Error processing JSON node {child_node['name']}: {e}"
-                                    )
+                                # Process JSON data
+                                await self._process_json_node(
+                                    json_folder, child_node, ns_idx, value, server
+                                )
                         else:
                             # Create/update regular variable node
                             await server.create_or_get_variable_node(
                                 tag_node, child_node, ns_idx, value
                             )
                             server.update_value(namespace, base_path, value)
+
+    async def _process_json_node(
+        self, parent_node, node_config, ns_idx, value, server: Any, data=None
+    ):
+        """Process a JSON node and its nested objects recursively.
+
+        Args:
+            parent_node: Parent node to create children under
+            node_config: Configuration for the current node
+            ns_idx: Namespace index
+            value: Raw JSON value
+            data: Parsed JSON data (optional)
+        """
+        try:
+            # Parse JSON if not already parsed
+            if data is None:
+                data = json.loads(value) if isinstance(value, str) else value
+
+            # Create raw_data node with original JSON string
+            value = json.dumps(value) if isinstance(value, dict) else value
+            await server.create_or_get_variable_node(
+                parent_node,
+                {
+                    "name": "json_data",
+                    "type": "string",
+                    "access": node_config["access"],
+                },
+                ns_idx,
+                value,
+            )
+
+            # Process each configured object
+            if "objects" in node_config:
+                for obj_config in node_config["objects"]:
+                    obj_name = obj_config["name"]
+                    obj_value = data.get(obj_name)
+
+                    if obj_value is not None:
+                        # Type conversion based on configuration
+                        # converted_value = self._convert_value_type(
+                            # obj_value, obj_config["type"]
+                        # )
+
+                        # actual_type = server.determine_opcua_type(obj_value)
+
+                        if obj_config.get("type") == "json_string":
+                            # Create subfolder for nested JSON
+                            json_subfolder = await server.create_or_get_folder_node(
+                                parent_node, obj_name, ns_idx
+                            )
+                            # Recursively process nested JSON
+                            await self._process_json_node(
+                                json_subfolder,
+                                obj_config,
+                                ns_idx,
+                                obj_value,
+                                server,
+                            )
+                        else:
+                            # Create or get regular variable node
+                            await server.create_or_get_variable_node(
+                                parent_node,
+                                {
+                                    "name": obj_name,
+                                    "type": obj_config.get("type"),
+                                    "description": obj_config.get("description"),
+                                    "access": obj_config.get("access"),
+                                },
+                                ns_idx,
+                                obj_value,
+                            )
+
+        except json.JSONDecodeError:
+            # print(f"Error decoding JSON value: {e}")
+            print("")
+        except Exception:
+            # print(f"Error processing JSON node: {e}")
+            print("")
+
+    def _convert_value_type(self, value, target_type: str):
+        """Convert value to the specified type"""
+        # Print out the value type
+        print(f"Value: {value}, Type: {type(value)}")
+
+        try:
+            if target_type == "integer":
+                return value if value is not None else 0
+            elif target_type == "double":
+                return float(value) if value is not None else 0.0
+            elif target_type == "string":
+                return str(value) if value is not None else ""
+            elif target_type == "array_double":
+                if isinstance(value, (list, tuple)):
+                    return [float(x) for x in value]
+                return []
+            elif target_type == "array_integer":
+                if isinstance(value, (list, tuple)):
+                    return [int(float(x)) for x in value]
+                return []
+            elif target_type == "json_string":
+                return value
+            else:
+                return value
+        except (ValueError, TypeError) as e:
+            print(f"Error converting value {value} to type {target_type}: {e}")
+            return value
 
     async def stop(self):
         """Stop the plugin and cleanup"""

@@ -65,7 +65,10 @@ async def main():
     # asyncio.create_task(value_simulator(server))
 
     # Start the server
-    await server.start()
+    try:
+        await server.start()
+    except asyncio.CancelledError:
+        pass
 
 
 if __name__ == "__main__":

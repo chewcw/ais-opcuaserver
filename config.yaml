@@ -1,6 +1,6 @@
 server:
   endpoint: "opc.tcp://0.0.0.0:4840/test/server/"
-  name: "Test OPC UA Server"
+  name: "My awesome OPC UA Server"
   uri: "http://example.org/UA/"
   security_mode: "None" # Optional: None, Sign, SignAndEncrypt
   security_policy: "None"  # Optional: None, Basic128Rsa15, Basic256, Basic256Sha256
