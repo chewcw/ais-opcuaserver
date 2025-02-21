@@ -18,15 +18,42 @@ logger = logging.getLogger(__name__)
 
 
 class DataChangeHandler(SubHandler):
+    """Handler for data change notifications in OPC UA subscriptions.
+
+    Implements the SubHandler interface to receive notifications when monitored values change.
+    """
+
     def __init__(self, path):
+        """Initialize the data change handler.
+
+        Args:
+            path: String path identifier for the monitored node
+        """
         self.path = path
 
     def datachange_notification(self, node, val, data) -> None:
+        """Called when a monitored value changes.
+
+        Args:
+            node: The node that changed
+            val: The new value
+            data: Additional data about the change
+        """
         print(f"Value changed for {self.path}: {val}")
 
 
 class OPCUAGatewayServer:
+    """OPC UA server implementation that acts as a gateway between plugins and clients.
+
+    Manages server configuration, namespaces, nodes and plugin integration.
+    """
+
     def __init__(self, config_path: Path):
+        """Initialize the OPC UA server.
+
+        Args:
+            config_path: Path to the YAML configuration file
+        """
         self.server = Server()
         self.data_queue = queue.Queue()
         self.nodes: Dict[str, Node] = {}
@@ -96,7 +123,17 @@ class OPCUAGatewayServer:
             raise Exception(f"Error loading configuration: {str(e)}")
 
     def _get_ua_type(self, type_str: str) -> ua.VariantType:
-        """Convert string type to UA variant type"""
+        """Convert string type to UA variant type.
+
+        Maps common data type strings to their corresponding OPC UA VariantType.
+
+        Args:
+            type_str: String representation of the data type
+
+        Returns:
+            ua.VariantType: The corresponding OPC UA variant type.
+            If no match is found, returns ua.VariantType.Variant as default.
+        """
         type_mapping = {
             "double": ua.VariantType.Double,
             "float": ua.VariantType.Float,
@@ -107,7 +144,15 @@ class OPCUAGatewayServer:
         return type_mapping.get(type_str.lower(), ua.VariantType.Variant)
 
     async def __init_server(self):
-        """Initialize server with configuration"""
+        """Initialize server with configuration.
+
+        Sets up server parameters including:
+        - Security policies and authentication
+        - Endpoints and certificates
+        - Server identification properties
+
+        This method should be called before starting the server.
+        """
         # Get server config
         server_config = self.config["server"]
 
@@ -169,7 +214,20 @@ class OPCUAGatewayServer:
     async def create_variable(
         self, parent_node: Node, ns_idx: int, obj_config: NodeConfig
     ):
-        """Create a variable node with configuration"""
+        """
+        Create a variable node with configuration.
+
+        Creates a new variable node under the specified parent with the given configuration.
+        Also sets up data change monitoring through subscriptions.
+
+        Args:
+            parent_node: The parent node under which to create the variable
+            ns_idx: Namespace index for the new variable
+            obj_config: Configuration object containing variable properties
+
+        Returns:
+            The created variable node
+        """
         node = await parent_node.add_variable(
             ns_idx,
             obj_config.name,
@@ -394,7 +452,20 @@ class OPCUAGatewayServer:
             return ""
 
     def update_value(self, namespace: str, variable_name: str, value: Any):
-        """Update value for a specific variable"""
+        """
+        Update value for a specific variable.
+
+        Updates the value of a node identified by namespace and variable name.
+        Handles both direct namespace references and nested paths.
+
+        Args:
+            namespace: Namespace identifier or path segment
+            variable_name: Name of the variable to update
+            value: New value to set
+
+        Note:
+            The update is queued and processed asynchronously by the server.
+        """
         # Remove the namespace index if present (e.g., "0:" becomes "")
         if ":" in namespace:
             namespace = namespace.split(":")[1]
@@ -410,7 +481,14 @@ class OPCUAGatewayServer:
         self.data_queue.put((full_path, value))
 
     async def start(self):
-        """Start the OPC UA server"""
+        """
+        Start the OPC UA server.
+
+        Initializes the server, loads plugins, and starts the main server loop.
+        Handles graceful shutdown of plugins and tasks on cancellation.
+
+        The server runs until explicitly stopped or cancelled.
+        """
         # Initialize the server
         await self.__init_server()
 
@@ -461,7 +539,12 @@ class OPCUAGatewayServer:
                             pass
 
     async def stop(self):
-        """Stop the OPC UA server and cleanup resources"""
+        """
+        Stop the OPC UA server and cleanup resources.
+
+        Cancels all running tasks and stops the server gracefully.
+        Ensures proper cleanup of resources and shutdown of the server.
+        """
         try:
             # Cancel the value updater task if it exists
             tasks = [

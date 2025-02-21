@@ -15,22 +15,30 @@ class PluginLoadError(Exception):
 
 
 class PluginManager:
+    """
+    Manages the loading and storage of plugins.
+    
+    This class handles dynamic loading of plugin modules from files and maintains
+    a dictionary of loaded plugin instances.
+    """
     def __init__(self):
+        """Initialize an empty plugin manager."""
         self.plugins: Dict[str, Any] = {}
 
     def load_plugin(self, name: str, path: str) -> Any:
         """
-        Dynamically load a plugin module from a file path
+        Load multiple plugins from their configurations
 
         Args:
-            name: Plugin name
-            path: Path to plugin module (can be relative or absolute)
+            plugin_configs: List of dictionaries containing plugin configurations.
+                          Each dictionary must have 'name' and 'path' keys.
 
         Returns:
-            Loaded plugin module instance
+            Dict[str, PluginInterface]: Dictionary mapping plugin names to their instances
 
-        Raises:
-            PluginLoadError: If plugin loading fails
+        Note:
+            If a plugin fails to load, an error is logged but execution continues
+            for remaining plugins.
         """
         try:
             # Handle both absolute and relative paths

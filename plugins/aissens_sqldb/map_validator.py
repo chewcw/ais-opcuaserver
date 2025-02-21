@@ -2,14 +2,25 @@ from typing import Any, Dict, List
 
 
 class MapValidator:
-    """Validator for SQL data mapping logic"""
+    """Validator for SQL data mapping logic
+    
+    This class provides functionality to validate data rows against mapping conditions.
+    It supports both simple comparison operations and complex logical combinations
+    using AND/OR operators.
+    """
 
     OPERATORS = {
+        # Equal comparison operator
         "eq": lambda x, y: x == y,
+        # Greater than comparison operator
         "gt": lambda x, y: x > y,
+        # Less than comparison operator  
         "lt": lambda x, y: x < y,
+        # Greater than or equal comparison operator
         "gte": lambda x, y: x >= y,
+        # Less than or equal comparison operator
         "lte": lambda x, y: x <= y,
+        # Not equal comparison operator
         "ne": lambda x, y: x != y,
     }
 

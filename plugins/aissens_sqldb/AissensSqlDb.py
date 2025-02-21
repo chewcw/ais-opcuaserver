@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import sqlite3
 from asyncio.tasks import Task
 from pathlib import Path
@@ -13,12 +14,22 @@ from plugins.aissens_sqldb.map_validator import MapValidator
 from plugins.interface import PluginInterface
 from server.NamespaceConfig import NamespaceConfig
 
+logger = logging.getLogger(__name__)
+
 
 class Plugin(PluginInterface):
-    """AISSENS with sql based database plugin for OPC UA server"""
+    """AISSENS SQL Database Plugin for OPC UA Server.
+    
+    This plugin enables integration between SQL databases (SQLite/PostgreSQL) and OPC UA,
+    allowing data to be read from databases and exposed via OPC UA nodes.
+    """
 
     def __init__(self):
-        """Initialize the AissensSqlDb plugin"""
+        """Initialize the AissensSqlDb plugin.
+        
+        Sets up initial configuration state, database connection parameters,
+        and loads configuration from YAML file.
+        """
         super().__init__()
 
         # Database connection settings
@@ -41,12 +52,28 @@ class Plugin(PluginInterface):
             self.database_path = Path(self.db_config["path"])
 
     def get_namespace(self) -> NamespaceConfig:
-        """Create namespace from config"""
+        """Create and return the OPC UA namespace configuration.
+        
+        Returns:
+            NamespaceConfig: Configuration object containing namespace name and nodes.
+        """
         nodes = []
         return NamespaceConfig(name=self.opcua_config["namespace"], objects=nodes)
 
     def _load_config(self, config_path: Path):
-        """Load server configuration from YAML file"""
+        """Load and validate plugin configuration from YAML file.
+        
+        Args:
+            config_path (Path): Path to the YAML configuration file.
+            
+        Raises:
+            FileNotFoundError: If configuration file doesn't exist.
+            ValueError: If configuration is invalid or missing required fields.
+            Exception: For other configuration loading errors.
+            
+        Returns:
+            dict: Loaded configuration dictionary.
+        """
         try:
             with open(config_path) as f:
                 self.config = yaml.safe_load(f)
@@ -159,7 +186,16 @@ class Plugin(PluginInterface):
             raise Exception(f"Error loading configuration: {str(e)}")
 
     def _setup(self):
-        """Setup the plugin and connect to the database"""
+        """Initialize database connection based on configuration.
+        
+        Establishes connection to either SQLite or PostgreSQL database
+        using the provided configuration parameters.
+        
+        Raises:
+            ValueError: If unsupported database type is specified.
+            sqlite3.Error: For SQLite connection errors.
+            Exception: For other database connection errors.
+        """
         try:
             db_type = self.db_config["type"]
 
@@ -182,24 +218,24 @@ class Plugin(PluginInterface):
             print("Successfully connected to database")
 
         except sqlite3.Error as e:
-            print(f"Error connecting to database: {e}")
+            logging.error(f"Error connecting to database: {e}")
             self.conn = None
         except Exception as e:
-            print(f"Unexpected error connecting to database: {e}")
+            logging.error(f"Unexpected error connecting to database: {e}")
             self.conn = None
 
     async def _get_latest_values(
         self,
     ) -> Dict[str, Optional[Dict[str, Union[int, float, str, List[Any]]]]]:
-        """Get latest values from all configured tables.
-
+        """Retrieve the most recent values from all configured database tables.
+        
+        Executes queries on each configured table to fetch the latest row,
+        supporting both SQLite and PostgreSQL databases.
+        
         Returns:
             Dict[str, Optional[Dict[str, Union[int, float, str, List[Any]]]]]:
-                A dictionary where:
-                - Key is the table name (str)
-                - Value is either None (if no data/error) or a dictionary containing:
-                    - Column names as keys (str)
-                    - Column values as either int, float, str, or List[Any]
+                Dictionary mapping table names to their latest row data.
+                If no data or error occurs for a table, its value will be None.
 
         Example:
             {
@@ -212,6 +248,11 @@ class Plugin(PluginInterface):
                     ...
                 }
             }
+            
+        Raises:
+            sqlite3.Error: For SQLite database errors
+            psycopg2.Error: For PostgreSQL database errors
+            Exception: For other unexpected errors
         """
 
         try:
@@ -271,28 +312,41 @@ class Plugin(PluginInterface):
             return results
 
         except (sqlite3.Error, psycopg2.Error) as e:
-            print(f"Database error: {e}")
+            logging.error(f"Database error: {e}")
             return {}
         except Exception as e:
-            print(f"Unexpected error in _get_latest_values: {e}")
+            logging.error(f"Unexpected error in _get_latest_values: {e}")
             return {}
 
     async def start(self, server: Any) -> Task[None]:
-        """
-        Run the main plugin loop
-
+        """Start the plugin's main operation loop.
+        
+        Initializes database connection and begins periodic polling
+        of database values.
+        
         Args:
-            server: OPCUAGatewayServer instance
+            server: OPCUAGatewayServer instance for node management
+            
+        Returns:
+            Task[None]: Asyncio task running the main plugin loop
         """
         # Setup the plugin
+        logging.info("Starting AissensSqlDb plugin")
         self._setup()
         self.running = True
 
-        # Return the task instead of running it directly
+        # Return the task
         return asyncio.create_task(self._run_loop(server))
 
     async def _run_loop(self, server):
-        """Main plugin loop"""
+        """Main plugin operation loop.
+        
+        Continuously polls the database for new values and updates OPC UA nodes.
+        Handles errors gracefully and maintains the polling interval.
+        
+        Args:
+            server: OPCUAGatewayServer instance for node management
+        """
         while self.running:
             try:
                 latest_values = await self._get_latest_values()
@@ -308,11 +362,28 @@ class Plugin(PluginInterface):
                 await asyncio.sleep(1)
 
     async def _process_row_data(self, row_data: dict, table_name: str, server: Any):
-        """Process a single row of data against configuration"""
+        """Process a single row of database data and update OPC UA nodes.
+        
+        Maps database values to OPC UA nodes according to configuration rules.
+        Creates or updates nodes as needed.
+        
+        Args:
+            row_data (dict): Dictionary containing column name-value pairs from database
+            table_name (str): Name of the database table being processed
+            server (Any): OPCUAGatewayServer instance for node management
+            
+        Note:
+            The method handles node creation hierarchy:
+            - Folder Node
+            - Tag Node
+            - Child Nodes (including JSON processing)
+        """
+        logging.debug(f"Processing row data for table {table_name}")
+
         namespace = self.opcua_config["namespace"]
         ns_idx = server.get_namespace_index(namespace)
         if ns_idx is None:
-            print(f"Namespace {namespace} not found")
+            logging.warning(f"Namespace {namespace} not found")
             return
 
         if not row_data:
@@ -383,14 +454,23 @@ class Plugin(PluginInterface):
     async def _process_json_node(
         self, parent_node, node_config, ns_idx, value, server: Any, data=None
     ):
-        """Process a JSON node and its nested objects recursively.
-
+        """Process a JSON-formatted node and create corresponding OPC UA structure.
+        
+        Recursively processes JSON data and creates appropriate OPC UA nodes
+        for each JSON field according to configuration.
+        
         Args:
-            parent_node: Parent node to create children under
-            node_config: Configuration for the current node
-            ns_idx: Namespace index
-            value: Raw JSON value
-            data: Parsed JSON data (optional)
+            parent_node: Parent OPC UA node to create children under
+            node_config (dict): Configuration for the current node
+            ns_idx (int): Namespace index
+            value (Union[str, dict]): Raw JSON value or parsed dictionary
+            server (Any): OPCUAGatewayServer instance
+            data (Optional[dict]): Pre-parsed JSON data
+            
+        Note:
+            - Creates a raw JSON data node with the original string
+            - Processes nested JSON objects recursively
+            - Handles both simple values and nested JSON structures
         """
         try:
             # Parse JSON if not already parsed
@@ -445,10 +525,11 @@ class Plugin(PluginInterface):
                             )
 
         except json.JSONDecodeError as e:
-            print(f"Error decoding JSON value: {e}")
+            logging.error(f"Error decoding JSON value: {e}")
         except Exception as e:
-            print(f"Error processing JSON node: {e}")
+            logging.error(f"Error processing JSON node: {e}")
 
     async def stop(self):
         """Stop the plugin and cleanup"""
+        logging.info("Stopping AissensSqlDb plugin")
         self.running = False
