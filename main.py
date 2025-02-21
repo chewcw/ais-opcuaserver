@@ -6,26 +6,6 @@ from pathlib import Path
 from server.OPCUAGatewayServer import OPCUAGatewayServer
 
 
-async def value_simulator(server: OPCUAGatewayServer):
-    """Simulates changing values every second"""
-    while True:
-        try:
-            temperature_value = random.uniform(0, 100)
-            server.update_value(
-                namespace="DataCollectors",
-                variable_name="Temperature",
-                value=temperature_value,
-            )
-
-            await asyncio.sleep(1)
-        except asyncio.CancelledError:
-            print("Simulator shutdown")
-            break
-        except Exception as e:
-            print(f"Error updating value: {e}")
-            await asyncio.sleep(1)
-
-
 async def shutdown(server: OPCUAGatewayServer, signal=None):
     """Cleanup tasks tied to the service's shutdown."""
     if signal:
@@ -60,9 +40,6 @@ async def main():
 
     for s in signals:
         loop.add_signal_handler(s, lambda s=s: signal_handler(s))
-
-    # Create the simulator task before starting the server
-    # asyncio.create_task(value_simulator(server))
 
     # Start the server
     try:

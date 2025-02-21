@@ -3,7 +3,7 @@ import json
 import sqlite3
 from asyncio.tasks import Task
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import psycopg2
 import yaml
@@ -12,9 +12,6 @@ from psycopg2.extras import DictCursor
 from plugins.aissens_sqldb.map_validator import MapValidator
 from plugins.interface import PluginInterface
 from server.NamespaceConfig import NamespaceConfig
-
-if TYPE_CHECKING:
-    pass
 
 
 class Plugin(PluginInterface):
@@ -420,13 +417,6 @@ class Plugin(PluginInterface):
                     obj_value = data.get(obj_name)
 
                     if obj_value is not None:
-                        # Type conversion based on configuration
-                        # converted_value = self._convert_value_type(
-                            # obj_value, obj_config["type"]
-                        # )
-
-                        # actual_type = server.determine_opcua_type(obj_value)
-
                         if obj_config.get("type") == "json_string":
                             # Create subfolder for nested JSON
                             json_subfolder = await server.create_or_get_folder_node(
@@ -454,40 +444,10 @@ class Plugin(PluginInterface):
                                 obj_value,
                             )
 
-        except json.JSONDecodeError:
-            # print(f"Error decoding JSON value: {e}")
-            print("")
-        except Exception:
-            # print(f"Error processing JSON node: {e}")
-            print("")
-
-    def _convert_value_type(self, value, target_type: str):
-        """Convert value to the specified type"""
-        # Print out the value type
-        print(f"Value: {value}, Type: {type(value)}")
-
-        try:
-            if target_type == "integer":
-                return value if value is not None else 0
-            elif target_type == "double":
-                return float(value) if value is not None else 0.0
-            elif target_type == "string":
-                return str(value) if value is not None else ""
-            elif target_type == "array_double":
-                if isinstance(value, (list, tuple)):
-                    return [float(x) for x in value]
-                return []
-            elif target_type == "array_integer":
-                if isinstance(value, (list, tuple)):
-                    return [int(float(x)) for x in value]
-                return []
-            elif target_type == "json_string":
-                return value
-            else:
-                return value
-        except (ValueError, TypeError) as e:
-            print(f"Error converting value {value} to type {target_type}: {e}")
-            return value
+        except json.JSONDecodeError as e:
+            print(f"Error decoding JSON value: {e}")
+        except Exception as e:
+            print(f"Error processing JSON node: {e}")
 
     async def stop(self):
         """Stop the plugin and cleanup"""
