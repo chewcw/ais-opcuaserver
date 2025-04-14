@@ -45,7 +45,7 @@ class Plugin(PluginInterface):
         self.opcua_tag_config = []
 
         # Load and validate config
-        self.config = self._load_config(Path(__file__).parent / "config.yaml")
+        self.config = self._load_config(Path(__file__).parent / "config_sqlite.yaml")
 
         # If using SQLite, store the path
         if self.db_config["type"] == "sqlite":

@@ -1,23 +1,14 @@
 [project]
 name = "pyopcua-server"
 version = "0.1.0"
-description = ""
-authors = [
-    {name = "Your Name",email = "you@example.com"}
-]
+description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 dependencies = [
-    "asyncua (>=1.1.5,<2.0.0)",
-    "pyyaml (>=6.0.2,<7.0.0)",
-    "psycopg2-binary (>=2.9.10,<3.0.0)",
+    "asyncua>=1.1.5",
+    "psycopg2-binary>=2.9.10",
+    "pyyaml>=6.0.2",
 ]
-
-
-[build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
-build-backend = "poetry.core.masonry.api"
 
 [pyright.tool]
-include = ["."]
 venvPath = [".venv"]
