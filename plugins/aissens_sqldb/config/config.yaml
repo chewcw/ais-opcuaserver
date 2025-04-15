@@ -4,7 +4,7 @@ database:
   # path: "/workspace/rnd/asusiot/sensor_data_new.db"
   # postgresql ------------------------------------------------------------------ 
   type: "postgres"
-  host: "localhost"
+  host: "172.20.0.5"
   port: 5432
   database: "postgres"
   user: "postgres"
@@ -12,7 +12,7 @@ database:
   polling_interval_in_second: 10
 
   tables:
-    - name: "vibration_data.this_is_table"
+    - name: "vibration_data"
       columns:
         - name: id
           data_type: INTEGER
@@ -20,10 +20,10 @@ database:
           data_type: TEXT
         - name: sensor_name
           data_type: TEXT
-        - name: json_value
-          data_type: TEXT
         - name: data_type
           data_type: INTEGER
+        - name: json_value
+          data_type: TEXT
 
   tag:
     - map_logic:
@@ -33,8 +33,8 @@ database:
             conditions:
               - column: "data_type"
                 operator: "eq"
-                value: 9
-      table_map: "vibration_data.this_is_table"
+                value: 1
+      table_map: "vibration_data"
       column_map: "sensor_name"
       opcua_folder_name: "fft"
     - map_logic:
@@ -45,12 +45,12 @@ database:
               - column: "data_type"
                 operator: "eq"
                 value: 72
-      table_map: "vibration_data.this_is_table"
+      table_map: "vibration_data"
       column_map: "sensor_name"
       opcua_folder_name: "raw_data_and_fft"
 
 opcua:
-  namespace: "this_is_a_namespace"
+  namespace: "sensors"
   tag:
     - folder_name: "fft"
       child_node:
@@ -58,19 +58,19 @@ opcua:
           type: "datetime"
           description: "Timestamp of the tag"
           access: "r"
-          table_map: "vibration_data.this_is_table"
+          table_map: "vibration_data"
           column_map: timestamp
         - name: "name"
           type: "string"
           description: "Name of the tag"
           access: "r"
-          table_map: "vibration_data.this_is_table"
+          table_map: "vibration_data"
           column_map: sensor_name
         - name: "json_value"
           type: "json_string"
           description: "JSON value of the tag"
           access: "r"
-          table_map: "vibration_data.this_is_table"
+          table_map: "vibration_data"
           column_map: json_value
           objects:
             - name: "data_type_name"
@@ -131,19 +131,19 @@ opcua:
           type: "string"
           description: "Timestamp of the tag"
           access: "r"
-          table_map: "vibration_data.this_is_table"
+          table_map: "vibration_data"
           column_map: timestamp
         - name: "name"
           type: "string"
           description: "Name of the tag"
           access: "r"
-          table_map: "vibration_data.this_is_table"
+          table_map: "vibration_data"
           column_map: sensor_name
         - name: "json_value"
           type: "json_string"
           description: "JSON value of the tag"
           access: "r"
-          table_map: "vibration_data.this_is_table"
+          table_map: "vibration_data"
           column_map: json_value
           objects:
             - name: "data_type_name"

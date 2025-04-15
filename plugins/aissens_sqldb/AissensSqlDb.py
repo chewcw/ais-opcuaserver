@@ -19,14 +19,14 @@ logger = logging.getLogger(__name__)
 
 class Plugin(PluginInterface):
     """AISSENS SQL Database Plugin for OPC UA Server.
-    
+
     This plugin enables integration between SQL databases (SQLite/PostgreSQL) and OPC UA,
     allowing data to be read from databases and exposed via OPC UA nodes.
     """
 
     def __init__(self):
         """Initialize the AissensSqlDb plugin.
-        
+
         Sets up initial configuration state, database connection parameters,
         and loads configuration from YAML file.
         """
@@ -45,7 +45,7 @@ class Plugin(PluginInterface):
         self.opcua_tag_config = []
 
         # Load and validate config
-        self.config = self._load_config(Path(__file__).parent / "config_sqlite.yaml")
+        self.config = self._load_config(Path(__file__).parent / "config" / "config.yaml")
 
         # If using SQLite, store the path
         if self.db_config["type"] == "sqlite":
@@ -53,7 +53,7 @@ class Plugin(PluginInterface):
 
     def get_namespace(self) -> NamespaceConfig:
         """Create and return the OPC UA namespace configuration.
-        
+
         Returns:
             NamespaceConfig: Configuration object containing namespace name and nodes.
         """
@@ -62,15 +62,15 @@ class Plugin(PluginInterface):
 
     def _load_config(self, config_path: Path):
         """Load and validate plugin configuration from YAML file.
-        
+
         Args:
             config_path (Path): Path to the YAML configuration file.
-            
+
         Raises:
             FileNotFoundError: If configuration file doesn't exist.
             ValueError: If configuration is invalid or missing required fields.
             Exception: For other configuration loading errors.
-            
+
         Returns:
             dict: Loaded configuration dictionary.
         """
@@ -187,10 +187,10 @@ class Plugin(PluginInterface):
 
     def _setup(self):
         """Initialize database connection based on configuration.
-        
+
         Establishes connection to either SQLite or PostgreSQL database
         using the provided configuration parameters.
-        
+
         Raises:
             ValueError: If unsupported database type is specified.
             sqlite3.Error: For SQLite connection errors.
@@ -228,10 +228,10 @@ class Plugin(PluginInterface):
         self,
     ) -> Dict[str, Optional[Dict[str, Union[int, float, str, List[Any]]]]]:
         """Retrieve the most recent values from all configured database tables.
-        
+
         Executes queries on each configured table to fetch the latest row,
         supporting both SQLite and PostgreSQL databases.
-        
+
         Returns:
             Dict[str, Optional[Dict[str, Union[int, float, str, List[Any]]]]]:
                 Dictionary mapping table names to their latest row data.
@@ -248,7 +248,7 @@ class Plugin(PluginInterface):
                     ...
                 }
             }
-            
+
         Raises:
             sqlite3.Error: For SQLite database errors
             psycopg2.Error: For PostgreSQL database errors
@@ -320,13 +320,13 @@ class Plugin(PluginInterface):
 
     async def start(self, server: Any) -> Task[None]:
         """Start the plugin's main operation loop.
-        
+
         Initializes database connection and begins periodic polling
         of database values.
-        
+
         Args:
             server: OPCUAGatewayServer instance for node management
-            
+
         Returns:
             Task[None]: Asyncio task running the main plugin loop
         """
@@ -340,10 +340,10 @@ class Plugin(PluginInterface):
 
     async def _run_loop(self, server):
         """Main plugin operation loop.
-        
+
         Continuously polls the database for new values and updates OPC UA nodes.
         Handles errors gracefully and maintains the polling interval.
-        
+
         Args:
             server: OPCUAGatewayServer instance for node management
         """
@@ -363,15 +363,15 @@ class Plugin(PluginInterface):
 
     async def _process_row_data(self, row_data: dict, table_name: str, server: Any):
         """Process a single row of database data and update OPC UA nodes.
-        
+
         Maps database values to OPC UA nodes according to configuration rules.
         Creates or updates nodes as needed.
-        
+
         Args:
             row_data (dict): Dictionary containing column name-value pairs from database
             table_name (str): Name of the database table being processed
             server (Any): OPCUAGatewayServer instance for node management
-            
+
         Note:
             The method handles node creation hierarchy:
             - Folder Node
@@ -455,10 +455,10 @@ class Plugin(PluginInterface):
         self, parent_node, node_config, ns_idx, value, server: Any, data=None
     ):
         """Process a JSON-formatted node and create corresponding OPC UA structure.
-        
+
         Recursively processes JSON data and creates appropriate OPC UA nodes
         for each JSON field according to configuration.
-        
+
         Args:
             parent_node: Parent OPC UA node to create children under
             node_config (dict): Configuration for the current node
@@ -466,7 +466,7 @@ class Plugin(PluginInterface):
             value (Union[str, dict]): Raw JSON value or parsed dictionary
             server (Any): OPCUAGatewayServer instance
             data (Optional[dict]): Pre-parsed JSON data
-            
+
         Note:
             - Creates a raw JSON data node with the original string
             - Processes nested JSON objects recursively
