@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import os
 import sqlite3
 from asyncio.tasks import Task
 from pathlib import Path
@@ -44,8 +45,14 @@ class Plugin(PluginInterface):
         self.opcua_config = {}
         self.opcua_tag_config = []
 
+        # Database cursor checkpoints for tracking processed rows
+        self.db_checkpoints = {}
+        self.checkpoint_file = Path(__file__).parent / "data" / "checkcounts.json"
+
         # Load and validate config
-        self.config = self._load_config(Path(__file__).parent / "config" / "config.yaml")
+        self.config = self._load_config(
+            Path(__file__).parent / "config" / "config.yaml"
+        )
 
         # If using SQLite, store the path
         if self.db_config["type"] == "sqlite":
@@ -215,6 +222,16 @@ class Plugin(PluginInterface):
             else:
                 raise ValueError(f"Unsupported database type: {db_type}")
 
+            # Load or initialize checkpoints for all configured tables
+            saved_checkpoints = self._load_checkpoints()
+            if saved_checkpoints:
+                self.db_checkpoints = saved_checkpoints
+                logging.info("Loaded checkpoints from file")
+            else:
+                # Initialize checkpoints for all configured tables
+                self._initialize_checkpoints()
+                self._save_checkpoints() # Save the initial checkpoints
+
             print("Successfully connected to database")
 
         except sqlite3.Error as e:
@@ -223,6 +240,109 @@ class Plugin(PluginInterface):
         except Exception as e:
             logging.error(f"Unexpected error connecting to database: {e}")
             self.conn = None
+
+    async def _get_new_values(self) -> Dict[str, List[Dict[str, Any]]]:
+        """Retrieve all new values since the last checkpoint for each table.
+
+        Executes queries on each configured table to fetch all rows with ID greater
+        than the last checkpoint, supporting both SQLite and PostgreSQL databases.
+
+        Returns:
+            Dict[str, List[Dict[str, Any]]]: Dictionary mapping table names to
+            lists of row data dictionaries. Each list contains all new rows since
+            the last checkpoint. If no data or error occurs, an empty list is returned.
+
+        Example:
+            {
+                "vibration_data": [
+                    {
+                        "id": 123,
+                        "namespace": "device1",
+                        "timestamp": "2023-...",
+                        "sampling_rate": 1000,
+                        "acceleration_x": [-0.1, ...],
+                        ...
+                    },
+                    {
+                        "id": 124,
+                        ...
+                    }
+                ]
+            }
+        """
+        try:
+            results = {}
+            loop = asyncio.get_running_loop()
+
+            for table_config in self.db_tables_config:
+                table_name = table_config["name"]
+                # Get configured column names
+                configured_columns = [col["name"] for col in table_config["columns"]]
+
+                # Get the last checkpoint for this table, default to 0 if not set
+                last_id = self.db_checkpoints.get(table_name, 0)
+
+                # Build query to get all rows with ID greater than the last checkpoint
+                query = f"""
+                    SELECT * FROM {table_name}
+                    WHERE id > {last_id}
+                    ORDER BY id ASC
+                """
+
+                # Execute query based on database type
+                if self.db_config["type"] == "sqlite":
+
+                    def execute_query():
+                        # Create new connection inside the executor
+                        with sqlite3.connect(self.db_config["path"]) as conn:
+                            conn.row_factory = sqlite3.Row
+                            cursor = conn.cursor()
+                            cursor.execute(query)
+                            rows = cursor.fetchall()
+                            return (
+                                [tuple(row) for row in rows] if rows is not None else []
+                            )
+
+                    rows = await loop.run_in_executor(None, execute_query)
+
+                else:  # postgresql
+                    if self.conn is None:
+                        raise ValueError("No database connection")
+                    cursor = self.conn.cursor()
+                    cursor.execute(query)
+                    rows = cursor.fetchall()
+                    rows = [tuple(row) for row in rows] if rows is not None else []
+
+                # Process all returned rows
+                if rows:
+                    table_results = []
+                    max_id = last_id
+
+                    for result in rows:
+                        # Create dictionary from column name and value
+                        row_dict = dict(zip(configured_columns, result))
+                        table_results.append(row_dict)
+
+                        # Update max_id for checkpoint
+                        if row_dict.get("id", 0) > max_id:
+                            max_id = row_dict["id"]
+
+                    # Update checkpoint for this table with highest ID processed
+                    self.db_checkpoints[table_name] = max_id
+                    # Save the updated checkpoints to file
+                    self._save_checkpoints()
+                    results[table_name] = table_results
+                else:
+                    results[table_name] = []
+
+            return results
+
+        except (sqlite3.Error, psycopg2.Error) as e:
+            logging.error(f"Database error in _get_new_values: {e}")
+            return {}
+        except Exception as e:
+            logging.error(f"Unexpected error in _get_new_values: {e}")
+            return {}
 
     async def _get_latest_values(
         self,
@@ -343,23 +463,46 @@ class Plugin(PluginInterface):
 
         Continuously polls the database for new values and updates OPC UA nodes.
         Handles errors gracefully and maintains the polling interval.
+        Uses exponential backoff strategy for error recovery.
 
         Args:
             server: OPCUAGatewayServer instance for node management
         """
+        error_count = 0
+        max_wait_time = 60  # Maximum wait time in seconds
+        base_wait_time = 1  # Starting wait time in seconds
+        
         while self.running:
             try:
-                latest_values = await self._get_latest_values()
+                # Get all new values since the last checkpoint
+                new_values = await self._get_new_values()
 
-                # Basically only one row will be returned here
-                for table_name, row_data in latest_values.items():
-                    if row_data is not None:
-                        await self._process_row_data(row_data, table_name, server)
+                # Process all new rows for each table
+                for table_name, rows in new_values.items():
+                    if rows:
+                        logging.info(
+                            f"Processing {len(rows)} new rows for table {table_name}"
+                        )
+                        # Process each row one by one in sequence
+                        for row_data in rows:
+                            await self._process_row_data(row_data, table_name, server)
 
+                # Reset error count on successful execution
+                if error_count > 0:
+                    logging.info("Successfully recovered from previous errors")
+                    error_count = 0
+                
+                # Wait for next polling interval
                 await asyncio.sleep(self.db_polling_interval_in_second)
             except Exception as e:
-                print(f"Error in plugin loop: {e}")
-                await asyncio.sleep(1)
+                # Increment error count and calculate wait time with exponential backoff
+                error_count += 1
+                wait_time = min(base_wait_time * (2 ** (error_count - 1)), max_wait_time)
+                
+                logging.error(f"Error in plugin loop (attempt {error_count}): {e}")
+                logging.info(f"Waiting {wait_time} seconds before retry")
+                
+                await asyncio.sleep(wait_time)
 
     async def _process_row_data(self, row_data: dict, table_name: str, server: Any):
         """Process a single row of database data and update OPC UA nodes.
@@ -529,7 +672,89 @@ class Plugin(PluginInterface):
         except Exception as e:
             logging.error(f"Error processing JSON node: {e}")
 
+    def _initialize_checkpoints(self):
+        """Initialize checkpoints for all configured tables.
+
+        This method determines the latest ID for each table and sets it as the
+        initial checkpoint. This ensures the plugin will only process new data
+        from the point it was started, not historical data.
+        """
+        try:
+            for table_config in self.db_tables_config:
+                table_name = table_config["name"]
+
+                max_id = 0
+
+                # Execute query based on database type
+                if self.db_config["type"] == "sqlite" and self.conn:
+                    cursor = self.conn.cursor()
+                    # Build query to get the maximum ID
+                    query = f"SELECT MIN(id) AS max_id FROM {table_name}"
+                    cursor.execute(query)
+                    result = cursor.fetchone()
+                    if result:
+                        max_id = result[0] if result[0] is not None else 0
+
+                elif self.db_config["type"] == "postgres" and self.conn:
+                    # Build query to get the first ID
+                    query = f"SELECT id AS max_id FROM {table_name} ORDER BY id LIMIT 1"
+                    cursor = self.conn.cursor()
+                    cursor.execute(query)
+                    result = cursor.fetchone()
+                    if result:
+                        max_id = result[0] if result[0] is not None else 0
+
+                # Set the initial checkpoint
+                self.db_checkpoints[table_name] = max_id
+                logging.info(
+                    f"Initialized checkpoint for table {table_name} at ID {max_id}"
+                )
+
+        except (sqlite3.Error, psycopg2.Error) as e:
+            logging.error(f"Database error initializing checkpoints: {e}")
+        except Exception as e:
+            logging.error(f"Unexpected error initializing checkpoints: {e}")
+
+    def _save_checkpoints(self):
+        """Save the current checkpoints to a JSON file.
+
+        This method writes the current checkpoint values for each table to a
+        JSON file, allowing for persistence across plugin restarts.
+        """
+        try:
+            # Ensure the data directory exists
+            os.makedirs(os.path.dirname(self.checkpoint_file), exist_ok=True)
+            
+            # Write checkpoints to file
+            with open(self.checkpoint_file, 'w') as f:
+                json.dump(self.db_checkpoints, f)
+                
+            logging.debug(f"Saved checkpoints to {self.checkpoint_file}")
+        except Exception as e:
+            logging.error(f"Error saving checkpoints to file: {e}")
+
+    def _load_checkpoints(self):
+        """Load checkpoints from JSON file if it exists.
+        
+        Returns:
+            dict: Loaded checkpoints, or empty dict if file doesn't exist
+        """
+        try:
+            if self.checkpoint_file.exists():
+                with open(self.checkpoint_file, 'r') as f:
+                    checkpoints = json.load(f)
+                logging.info(f"Loaded checkpoints from {self.checkpoint_file}")
+                return checkpoints
+            else:
+                logging.info("No checkpoint file found, will create new checkpoints")
+                return {}
+        except Exception as e:
+            logging.error(f"Error loading checkpoints from file: {e}")
+            return {}
+            
     async def stop(self):
         """Stop the plugin and cleanup"""
         logging.info("Stopping AissensSqlDb plugin")
+        # Make sure to save the checkpoints before stopping
+        self._save_checkpoints()
         self.running = False
