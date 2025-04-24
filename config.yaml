@@ -1,15 +1,22 @@
 server:
   endpoint: "opc.tcp://0.0.0.0:4840/test/server/"
   name: "My awesome OPC UA Server"
-  uri: "http://example.org/UA/"
+  uri: "http://localhost/UA/"
   security_mode: "None" # Optional: None, Sign, SignAndEncrypt
   security_policy: "None"  # Optional: None, Basic128Rsa15, Basic256, Basic256Sha256
-  certificate_path: "certs/cert.pem"  # Optional
-  private_key_path: "certs/key.pem"  # Optional
+  certificate_path: "certs/cert.pem"
+  private_key_path: "certs/key.pem"
   max_client: 100
   max_subscription_lifetime: 3600
   discovery_registration_interval: 60
+  user_manager:
+    enabled: true
+    users:
+      - username: "admin"
+        password: "System8188"
+      - username: "operator"
+        password: "op123"
 
 plugins:
   - name: aissens_sqldb
-    path: "plugins/aissens_sqldb/AissensSqlDb.py"
+    path: "src/plugins/aissens_sqldb/AissensSqlDb.py"

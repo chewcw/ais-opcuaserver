@@ -11,9 +11,9 @@ import psycopg2
 import yaml
 from psycopg2.extras import DictCursor
 
-from plugins.aissens_sqldb.map_validator import MapValidator
-from plugins.interface import PluginInterface
-from server.NamespaceConfig import NamespaceConfig
+from src.plugins.aissens_sqldb.map_validator import MapValidator
+from src.plugins.interface import PluginInterface
+from src.server.NamespaceConfig import NamespaceConfig
 
 logger = logging.getLogger(__name__)
 
@@ -209,7 +209,7 @@ class Plugin(PluginInterface):
             if db_type == "sqlite":
                 self.conn = sqlite3.connect(self.db_config["path"])
                 self.conn.row_factory = sqlite3.Row
-            elif db_type == "postgres":
+            elif db_type == "postgresql":
                 # Connect to PostgreSQL database
                 self.conn = psycopg2.connect(
                     database=self.db_config["database"],
@@ -232,7 +232,7 @@ class Plugin(PluginInterface):
                 self._initialize_checkpoints()
                 self._save_checkpoints() # Save the initial checkpoints
 
-            print("Successfully connected to database")
+            logger.info("Successfully connected to database")
 
         except sqlite3.Error as e:
             logging.error(f"Error connecting to database: {e}")
@@ -291,7 +291,6 @@ class Plugin(PluginInterface):
 
                 # Execute query based on database type
                 if self.db_config["type"] == "sqlite":
-
                     def execute_query():
                         # Create new connection inside the executor
                         with sqlite3.connect(self.db_config["path"]) as conn:
@@ -305,13 +304,16 @@ class Plugin(PluginInterface):
 
                     rows = await loop.run_in_executor(None, execute_query)
 
-                else:  # postgresql
+                elif self.db_config["type"] == "postgresql":
                     if self.conn is None:
                         raise ValueError("No database connection")
                     cursor = self.conn.cursor()
                     cursor.execute(query)
                     rows = cursor.fetchall()
                     rows = [tuple(row) for row in rows] if rows is not None else []
+
+                else:
+                    raise ValueError(f"Unsupported database type: {self.db_config['type']}")
 
                 # Process all returned rows
                 if rows:
@@ -554,6 +556,7 @@ class Plugin(PluginInterface):
             )
 
             if folder_config:
+
                 # Create main folder node
                 folder_node = await server.create_or_get_folder_node(
                     server.server.nodes.objects, folder_config["folder_name"], ns_idx

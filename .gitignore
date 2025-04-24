@@ -63,7 +63,7 @@ dmypy.json
 
 # Project specific
 *.db
-certs/*.pem
+certs
 *.key
 *.crt
 

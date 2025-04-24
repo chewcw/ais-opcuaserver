@@ -25,7 +25,7 @@ wheels = [
 
 [[package]]
 name = "asyncua"
-version = "1.1.5"
+version = "1.1.6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
@@ -37,9 +37,9 @@ dependencies = [
     { name = "sortedcontainers" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/49/be/be6dad2b7db58fc9e92260fa9fdda8604841f2863d60ec2c49dccb1f9661/asyncua-1.1.5.tar.gz", hash = "sha256:d5edac9234fd7f1ed6a923fad1bd709bd0fd3f8a0d41637d645666620375173f", size = 776599 }
+sdist = { url = "https://files.pythonhosted.org/packages/43/f4/6bf43e3820dd0cb0749d3bcb4ed66d6d654778bcae2e6e405fe848c1a83d/asyncua-1.1.6.tar.gz", hash = "sha256:da0fff57477ce9bd50cd48ab3aca5fc4dbfa4917127664a3e04422aaab7a4b51", size = 1048783 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/bf/1b/6cd0cc382dcb6097b6a9f6d749fed7f8860369b0b99372b8106e549396cf/asyncua-1.1.5-py3-none-any.whl", hash = "sha256:53c690a69e82f8e9a82174c7938d8cf2bff79052fe090ed60a505c9e66f56a58", size = 774717 },
+    { url = "https://files.pythonhosted.org/packages/de/85/4360f25f41c5b576f56120d71dd7c1f27ccdbbee22a844fc66329c486145/asyncua-1.1.6-py3-none-any.whl", hash = "sha256:6c94b9aa71f957abf5fc3eb76fc7359029097b44099c2b396e9e3e625671401f", size = 1127829 },
 ]
 
 [[package]]
@@ -139,7 +139,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "asyncua", specifier = ">=1.1.5" },
+    { name = "asyncua", specifier = ">=1.1.6" },
     { name = "psycopg2-binary", specifier = ">=2.9.10" },
     { name = "pyyaml", specifier = ">=6.0.2" },
 ]

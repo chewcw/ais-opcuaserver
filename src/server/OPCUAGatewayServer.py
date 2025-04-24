@@ -1,20 +1,76 @@
-import asyncio
 import logging
 import queue
+import subprocess
+import os
 import threading
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
+import asyncio
 
 import yaml
 from asyncua import Server, ua
 from asyncua.common.node import Node
 from asyncua.server.history import SubHandler
+from asyncua.server.user_managers import UserManager
+from asyncua.server.users import UserRole, User
 
-from server.NamespaceConfig import NamespaceConfig
-from server.NodeConfig import NodeConfig
-from server.PluginManager import PluginManager
+from src.server.NamespaceConfig import NamespaceConfig
+from src.server.NodeConfig import NodeConfig
+from src.server.PluginManager import PluginManager
 
 logger = logging.getLogger(__name__)
+
+
+class ConfigUserManager(UserManager):
+    """User manager that authenticates users based on credentials from config file.
+
+    This class extends the base UserManager to provide authentication using
+    username/password pairs defined in the server configuration.
+    """
+
+    def __init__(self, users_config: List[Dict[str, str]]):
+        """Initialize the user manager with config-defined users.
+
+        Args:
+            users_config: List of user dictionaries with username and password
+        """
+        super().__init__()
+        self.users = {user["username"]: user["password"] for user in users_config}
+        logger.info(f"User manager initialized with {len(self.users)} users")
+
+    def validate_password(self, username: str, password: str) -> bool:
+        """Validate user credentials.
+
+        Args:
+            username: The username to validate
+            password: The password to validate
+
+        Returns:
+            bool: True if credentials are valid, False otherwise
+        """
+        if username in self.users and self.users[username] == password:
+            return True
+        return False
+
+    def get_user(self, iserver, username=None, password=None, certificate=None):
+        """Get user from the user database.
+
+        Implements the method required by asyncua's UserManager interface.
+
+        Args:
+            iserver: Server instance
+            username: The username of the user
+            password: The password provided by the user
+            certificate: The user certificate
+
+        Returns:
+            User object if credentials are valid, otherwise None
+        """
+        if username and password and self.validate_password(username, password):
+            role = UserRole.Admin if username == "admin" else UserRole.User
+            return User(role=role)
+
+        return None
 
 
 class DataChangeHandler(SubHandler):
@@ -39,7 +95,7 @@ class DataChangeHandler(SubHandler):
             val: The new value
             data: Additional data about the change
         """
-        print(f"Value changed for {self.path}: {val}")
+        logger.info(f"Value changed for {self.path}: {val}")
 
 
 class OPCUAGatewayServer:
@@ -60,6 +116,199 @@ class OPCUAGatewayServer:
         self.namespaces: Dict[str, int] = {}
         self.plugin_manager = PluginManager()
         self.load_config(config_path)
+
+    def _generate_certificate(
+        self, cert_path: str, key_path: str, hostname: str | None = None
+    ) -> bool:
+        """Generate a self-signed certificate with OpenSSL.
+
+        Creates certificates directory if it doesn't exist and generates
+        a self-signed certificate with the proper Subject Alternative Names.
+
+        Args:
+            cert_path: Path to save the certificate
+            key_path: Path to save the private key
+            hostname: Server hostname, defaults to localhost if None
+
+        Returns:
+            bool: True if certificate generation succeeded, False otherwise
+        """
+        try:
+            # Create directory if it doesn't exist
+            cert_dir = os.path.dirname(cert_path)
+            if not os.path.exists(cert_dir):
+                os.makedirs(cert_dir)
+                logger.info(f"Created certificates directory: {cert_dir}")
+
+            # If certificate already exists, return
+            if os.path.exists(cert_path) and os.path.exists(key_path):
+                logger.info(
+                    f"Certificate and key already exist at {cert_path} and {key_path}"
+                )
+                return True
+
+            # Get server hostname if not provided
+            if not hostname:
+                try:
+                    hostname = subprocess.check_output(["hostname"], text=True).strip()
+                except Exception:
+                    hostname = "localhost"
+                    logger.warning("Failed to get hostname, using 'localhost' instead")
+
+            # Create temporary OpenSSL config
+            config_path = os.path.join(cert_dir, "openssl.cnf")
+            with open(config_path, "w") as f:
+                f.write(f"""[req]
+distinguished_name = req_distinguished_name
+req_extensions = v3_req
+prompt = no
+
+[req_distinguished_name]
+C = MY
+ST = YNY
+O = YNY
+CN = pyopcuaserver
+
+[v3_req]
+basicConstraints = critical, CA:true
+keyUsage = critical, digitalSignature, keyCertSign, cRLSign
+subjectAltName = @alt_names
+
+[alt_names]
+DNS.1 = localhost
+DNS.2 = {hostname}
+IP.1 = 127.0.0.1
+URI.1 = http://localhost/UA/
+""")
+
+            # Generate private key
+            subprocess.run(
+                ["openssl", "genrsa", "-out", key_path, "2048"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            # Generate certificate signing request
+            subprocess.run(
+                [
+                    "openssl",
+                    "req",
+                    "-new",
+                    "-key",
+                    key_path,
+                    "-out",
+                    f"{cert_dir}/cert.csr",
+                    "-config",
+                    config_path,
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            # Generate self-signed certificate
+            subprocess.run(
+                [
+                    "openssl",
+                    "x509",
+                    "-req",
+                    "-days",
+                    "3650",
+                    "-in",
+                    f"{cert_dir}/cert.csr",
+                    "-signkey",
+                    key_path,
+                    "-out",
+                    cert_path,
+                    "-extensions",
+                    "v3_req",
+                    "-extfile",
+                    config_path,
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            # Set file permissions for private key
+            os.chmod(key_path, 0o600)
+
+            # Clean up CSR
+            if os.path.exists(f"{cert_dir}/cert.csr"):
+                os.remove(f"{cert_dir}/cert.csr")
+
+            logger.info(f"Successfully generated certificate at {cert_path}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to generate certificate: {str(e)}")
+            return False
+
+    async def __init_server(self):
+        """Initialize server with configuration.
+
+        Sets up server parameters including:
+        - Security policies and authentication
+        - Endpoints and certificates
+        - Server identification properties
+
+        This method should be called before starting the server.
+        """
+        # Get server config
+        server_config = self.config["server"]
+
+        # Set up user authentication if enabled in config
+        if "user_manager" in server_config and server_config["user_manager"].get(
+            "enabled", False
+        ):
+            users_config = server_config["user_manager"].get("users", [])
+            if users_config:
+                self.server = Server(user_manager=ConfigUserManager(users_config))
+                logger.info("User authentication enabled")
+            else:
+                self.server = Server()
+                logger.warning("User authentication enabled but no users defined")
+
+        # Set up server parameters before initialization
+        self.server.set_identity_tokens([ua.UserNameIdentityToken])
+
+        # Set all possible endpoint policies for clients to connect through
+        self.server.set_security_policy(
+            [
+                ua.SecurityPolicyType.NoSecurity,
+                ua.SecurityPolicyType.Basic256Sha256_Sign,
+                ua.SecurityPolicyType.Basic256_SignAndEncrypt,
+            ]
+        )
+
+        await self.server.init()
+
+        # Set endpoint and security policy
+        self.server.set_endpoint(server_config["endpoint"])
+
+        # Configure security policy based on the config
+        security_policy = server_config.get("security_policy", "None")
+        if security_policy.lower() == "none":
+            self.server.set_security_policy([ua.SecurityPolicyType.NoSecurity])
+
+        # Generate certificates if needed, then load them
+        if "certificate_path" in server_config and "private_key_path" in server_config:
+            # Ensure certificate exists before loading
+            cert_path = server_config["certificate_path"]
+            key_path = server_config["private_key_path"]
+
+            # Generate certificates if they don't exist
+            self._generate_certificate(cert_path, key_path)
+
+            # Load certificates
+            await self.server.load_certificate(cert_path)
+            await self.server.load_private_key(key_path)
+
+        # Set server properties from config
+        await self.server.set_application_uri(server_config["uri"])
+
+        self.server.set_server_name(server_config["name"])
 
     def load_config(self, config_path: Path):
         """Load server configuration from YAML file
@@ -142,40 +391,6 @@ class OPCUAGatewayServer:
             "string": ua.VariantType.String,
         }
         return type_mapping.get(type_str.lower(), ua.VariantType.Variant)
-
-    async def __init_server(self):
-        """Initialize server with configuration.
-
-        Sets up server parameters including:
-        - Security policies and authentication
-        - Endpoints and certificates
-        - Server identification properties
-
-        This method should be called before starting the server.
-        """
-        # Get server config
-        server_config = self.config["server"]
-
-        # Set up server parameters before initialization
-        self.server.set_security_IDs(["Anonymous", "Basic256Sha256"])
-
-        # Add these lines for anonymous access
-        self.server.set_security_policy([])  # Empty list means no security
-        await self.server.init()
-
-        # Allow anonymous access
-        self.server.set_endpoint(server_config["endpoint"])
-        self.server.set_security_policy([ua.SecurityPolicyType.NoSecurity])
-
-        # Load certificates if needed
-        if "certificate_path" in server_config and "private_key_path" in server_config:
-            await self.server.load_certificate(server_config["certificate_path"])
-            await self.server.load_private_key(server_config["private_key_path"])
-
-        # Set server properties from config
-        await self.server.set_application_uri(server_config["uri"])
-
-        self.server.set_server_name(server_config["name"])
 
     async def init_namespace(self, ns_config: NamespaceConfig):
         """Initialize a namespace and its objects"""
@@ -324,7 +539,7 @@ class OPCUAGatewayServer:
         except ua.UaError as e:
             # Create new folder node if it doesn't exist
             # return await self.create_folder(ns_idx, parent_node, name, "")
-            print(f"Error creating/getting node {name}: {e}")
+            logger.info(f"Error creating/getting node {name}: {e}")
             raise
 
     async def create_or_get_variable_node(
@@ -422,7 +637,7 @@ class OPCUAGatewayServer:
             return node
 
         except ua.UaError as e:
-            print(f"Error creating/getting variable node {node_config['name']}: {e}")
+            logger.error(f"Error creating/getting variable node {node_config['name']}: {e}")
             raise
 
     async def get_node_path(self, node: Node) -> str:
@@ -448,7 +663,7 @@ class OPCUAGatewayServer:
             return browse_name.Name
 
         except Exception as e:
-            print(f"Error getting node path: {e}")
+            logger.error(f"Error getting node path: {e}")
             return ""
 
     def update_value(self, namespace: str, variable_name: str, value: Any):
@@ -502,17 +717,17 @@ class OPCUAGatewayServer:
                     try:
                         await self.init_namespace(ns_config)
                     except ValueError as e:
-                        print(f"Error initializing namespace {ns_config.name}: {e}")
+                        logger.error(f"Error initializing namespace {ns_config.name}: {e}")
                         continue
 
                 # Run the plugin and store the task
                 plugin_task = await plugin.start(self)
                 if isinstance(plugin_task, (asyncio.Task, threading.Thread)):
                     plugin_tasks.append(plugin_task)
-                    print(f"Started plugin {name}")
+                    logger.info(f"Started plugin {name}")
 
             except Exception as e:
-                print(f"Error running plugin {name}: {e}")
+                logger.error(f"Error running plugin {name}: {e}")
                 continue
 
         # Run the server
@@ -525,9 +740,9 @@ class OPCUAGatewayServer:
                 for name, plugin in self.plugins.items():
                     try:
                         await plugin.stop()
-                        print(f"Stopped plugin {name}")
+                        logger.info(f"Stopped plugin {name}")
                     except Exception as e:
-                        print(f"Error stopping plugin {name}: {e}")
+                        logger.info(f"Error stopping plugin {name}: {e}")
 
                 # Cancel all plugin tasks
                 for task in plugin_tasks:
@@ -562,6 +777,6 @@ class OPCUAGatewayServer:
             # Stop the server
             await self.server.stop()
 
-            print("Server stopped successfully")
+            logger.info("Server stopped successfully")
         except Exception as e:
-            print(f"Error stopping server: {e}")
+            logger.error(f"Error stopping server: {e}")

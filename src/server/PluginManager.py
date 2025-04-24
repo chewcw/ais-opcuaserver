@@ -3,7 +3,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List
 
-from plugins.interface import PluginInterface
+from src.plugins.interface import PluginInterface
 
 logger = logging.getLogger(__name__)
 

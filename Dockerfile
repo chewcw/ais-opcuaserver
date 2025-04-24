@@ -32,12 +32,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Copy application code
-COPY main.py config.yaml ./
-COPY server/ ./server/
-COPY plugins/ ./plugins/
+COPY ./main.py config.yaml ./
+COPY ./src/server/ ./src/server/
+COPY ./src/plugins/ ./src/plugins/
 
 # Create necessary directories
-RUN mkdir -p plugins/aissens_sqldb/data certs
+RUN mkdir -p src/plugins/aissens_sqldb/data certs
 
 # Create entrypoint script to generate certificates and start server
 COPY docker-entrypoint.sh /usr/local/bin/

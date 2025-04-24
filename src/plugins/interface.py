@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from asyncio import Task
 from typing import Any, Optional, Union
 
-from server.NamespaceConfig import NamespaceConfig
+from src.server.NamespaceConfig import NamespaceConfig
 
 
 class PluginInterface(ABC):

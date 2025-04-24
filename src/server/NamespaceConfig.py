@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from server.NodeConfig import NodeConfig
+from src.server.NodeConfig import NodeConfig
 
 
 @dataclass

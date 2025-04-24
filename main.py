@@ -1,25 +1,31 @@
 import asyncio
+import logging
 import signal
 from pathlib import Path
+from src.server.OPCUAGatewayServer import OPCUAGatewayServer
 
-from server.OPCUAGatewayServer import OPCUAGatewayServer
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger("opcua_gateway")
 
 
 async def shutdown(server: OPCUAGatewayServer, signal=None):
     """Cleanup tasks tied to the service's shutdown."""
     if signal:
-        print(f"Received exit signal {signal.name}")
+        logger.info(f"Received exit signal {signal.name}")
 
     tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
 
     for task in tasks:
         task.cancel()
 
-    print("Canceling outstanding tasks")
+    logger.info("Canceling outstanding tasks")
     await asyncio.gather(*tasks, return_exceptions=True)
-    print("Stopping server")
+    logger.info("Stopping server")
     await server.stop()
-    print("Shutdown complete")
+    logger.info("Shutdown complete")
 
 
 async def main():

@@ -3,8 +3,8 @@ database:
   # type: "sqlite"
   # path: "/workspace/rnd/asusiot/sensor_data_new.db"
   # postgresql ------------------------------------------------------------------ 
-  type: "postgres"
-  host: "172.20.0.5"
+  type: "postgresql"
+  host: "172.20.0.3"
   port: 5432
   database: "postgres"
   user: "postgres"
@@ -56,7 +56,7 @@ opcua:
       child_node:
         - name: "timestamp"
           type: "datetime"
-          description: "Timestamp of the tag"
+          description: "Timestamp of the data collection"
           access: "r"
           table_map: "vibration_data"
           column_map: timestamp
@@ -81,9 +81,9 @@ opcua:
               type: "int64"
               description: "data_length"
               access: "r"
-            - name: "timestamp"
+            - name: "sensor_timestamp"
               type: "string"
-              description: "timestamp"
+              description: "sensor_timestamp"
               access: "r"
             - name: "fft_result"
               type: "int64"
