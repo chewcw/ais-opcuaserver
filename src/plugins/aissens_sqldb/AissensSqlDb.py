@@ -246,6 +246,7 @@ class Plugin(PluginInterface):
 
         Executes queries on each configured table to fetch all rows with ID greater
         than the last checkpoint, supporting both SQLite and PostgreSQL databases.
+        Always reads the most recent checkpoint values from the checkcounts.json file.
 
         Returns:
             Dict[str, List[Dict[str, Any]]]: Dictionary mapping table names to
@@ -273,6 +274,12 @@ class Plugin(PluginInterface):
         try:
             results = {}
             loop = asyncio.get_running_loop()
+            
+            # Always read from file to get the latest checkpoints
+            current_checkpoints = self._load_checkpoints() or {}
+            
+            # Update in-memory checkpoints with latest values from file
+            self.db_checkpoints = current_checkpoints
 
             for table_config in self.db_tables_config:
                 table_name = table_config["name"]
@@ -280,7 +287,7 @@ class Plugin(PluginInterface):
                 configured_columns = [col["name"] for col in table_config["columns"]]
 
                 # Get the last checkpoint for this table, default to 0 if not set
-                last_id = self.db_checkpoints.get(table_name, 0)
+                last_id = current_checkpoints.get(table_name, 0)
 
                 # Build query to get all rows with ID greater than the last checkpoint
                 query = f"""
@@ -746,11 +753,14 @@ class Plugin(PluginInterface):
             if self.checkpoint_file.exists():
                 with open(self.checkpoint_file, 'r') as f:
                     checkpoints = json.load(f)
-                logging.info(f"Loaded checkpoints from {self.checkpoint_file}")
+                logging.debug(f"Loaded checkpoints from {self.checkpoint_file}: {checkpoints}")
                 return checkpoints
             else:
                 logging.info("No checkpoint file found, will create new checkpoints")
                 return {}
+        except json.JSONDecodeError as e:
+            logging.error(f"Invalid JSON in checkpoint file: {e}, creating new checkpoints")
+            return {}
         except Exception as e:
             logging.error(f"Error loading checkpoints from file: {e}")
             return {}
