@@ -2,8 +2,8 @@ server:
   endpoint: "opc.tcp://0.0.0.0:4840/test/server/"
   name: "My awesome OPC UA Server"
   uri: "http://localhost/UA/"
-  security_mode: "None" # Optional: None, Sign, SignAndEncrypt
-  security_policy: "None"  # Optional: None, Basic128Rsa15, Basic256, Basic256Sha256
+  security_mode: "Sign"
+  security_policy: "Basic256Sha256_Sign"
   certificate_path: "certs/cert.pem"
   private_key_path: "certs/key.pem"
   max_client: 100

@@ -478,8 +478,8 @@ class Plugin(PluginInterface):
             server: OPCUAGatewayServer instance for node management
         """
         error_count = 0
-        max_wait_time = 60  # Maximum wait time in seconds
-        base_wait_time = 1  # Starting wait time in seconds
+        error_max_wait_time = 60  # Error maximum wait time in seconds
+        error_base_wait_time = 1  # Error starting wait time in seconds
         
         while self.running:
             try:
@@ -506,7 +506,7 @@ class Plugin(PluginInterface):
             except Exception as e:
                 # Increment error count and calculate wait time with exponential backoff
                 error_count += 1
-                wait_time = min(base_wait_time * (2 ** (error_count - 1)), max_wait_time)
+                wait_time = min(error_base_wait_time * (2 ** (error_count - 1)), error_max_wait_time)
                 
                 logging.error(f"Error in plugin loop (attempt {error_count}): {e}")
                 logging.info(f"Waiting {wait_time} seconds before retry")

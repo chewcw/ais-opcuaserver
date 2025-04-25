@@ -140,12 +140,36 @@ class OPCUAGatewayServer:
                 os.makedirs(cert_dir)
                 logger.info(f"Created certificates directory: {cert_dir}")
 
-            # If certificate already exists, return
-            if os.path.exists(cert_path) and os.path.exists(key_path):
-                logger.info(
-                    f"Certificate and key already exist at {cert_path} and {key_path}"
-                )
-                return True
+            try:
+                cert_info = subprocess.run(
+                    ["openssl", "x509", "-text", "-noout", "-in", cert_path],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout
+                
+                # Check for required extensions
+                extensions = cert_info.split('X509v3 extensions:')[1].split('Signature Algorithm:')[0].lower()
+                if ('key usage' in extensions and 
+                    'digital signature' in extensions and 
+                    'key encipherment' in extensions and
+                    'extended key usage' in extensions and 
+                    'server auth' in extensions and
+                    'client auth' in extensions):
+                    logger.info("Existing certificate has required extensions")
+                    return True
+                else:
+                    logger.warning("Existing certificate doesn't have required extensions. Regenerating...")
+                    # Delete existing files to regenerate
+                    os.remove(cert_path)
+                    os.remove(key_path)
+            except Exception as e:
+                logger.warning(f"Failed to verify existing certificate: {e}. Regenerating...")
+                # Delete existing files to regenerate
+                if os.path.exists(cert_path):
+                    os.remove(cert_path)
+                if os.path.exists(key_path):
+                    os.remove(key_path)
 
             # Get server hostname if not provided
             if not hostname:
@@ -171,14 +195,15 @@ CN = pyopcuaserver
 
 [v3_req]
 basicConstraints = critical, CA:true
-keyUsage = critical, digitalSignature, keyCertSign, cRLSign
+keyUsage = critical, digitalSignature, keyEncipherment, dataEncipherment, keyCertSign, cRLSign
+extendedKeyUsage = serverAuth, clientAuth
 subjectAltName = @alt_names
 
 [alt_names]
+URI.1 = urn:freeopcua:python:server
 DNS.1 = localhost
 DNS.2 = {hostname}
 IP.1 = 127.0.0.1
-URI.1 = http://localhost/UA/
 """)
 
             # Generate private key
@@ -207,7 +232,7 @@ URI.1 = http://localhost/UA/
                 text=True,
             )
 
-            # Generate self-signed certificate
+            # Generate self-signed certificate with proper extensions
             subprocess.run(
                 [
                     "openssl",
@@ -230,6 +255,19 @@ URI.1 = http://localhost/UA/
                 capture_output=True,
                 text=True,
             )
+            
+            # Verify certificate has proper extensions
+            try:
+                cert_info = subprocess.run(
+                    ["openssl", "x509", "-text", "-noout", "-in", cert_path],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout
+                logger.info(f"Certificate generated successfully with extensions:\n{cert_info.split('X509v3 extensions:')[1].split('Signature Algorithm:')[0]}")
+            except Exception as e:
+                logger.error(f"Failed to verify generated certificate: {e}")
+                return False
 
             # Set file permissions for private key
             os.chmod(key_path, 0o600)
@@ -256,13 +294,13 @@ URI.1 = http://localhost/UA/
         This method should be called before starting the server.
         """
         # Get server config
-        server_config = self.config["server"]
+        self.server_config = self.config["server"]
 
         # Set up user authentication if enabled in config
-        if "user_manager" in server_config and server_config["user_manager"].get(
+        if "user_manager" in self.server_config and self.server_config["user_manager"].get(
             "enabled", False
         ):
-            users_config = server_config["user_manager"].get("users", [])
+            users_config = self.server_config["user_manager"].get("users", [])
             if users_config:
                 self.server = Server(user_manager=ConfigUserManager(users_config))
                 logger.info("User authentication enabled")
@@ -270,45 +308,74 @@ URI.1 = http://localhost/UA/
                 self.server = Server()
                 logger.warning("User authentication enabled but no users defined")
 
-        # Set up server parameters before initialization
         self.server.set_identity_tokens([ua.UserNameIdentityToken])
 
-        # Set all possible endpoint policies for clients to connect through
-        self.server.set_security_policy(
-            [
-                ua.SecurityPolicyType.NoSecurity,
-                ua.SecurityPolicyType.Basic256Sha256_Sign,
-                ua.SecurityPolicyType.Basic256_SignAndEncrypt,
-            ]
-        )
+        # Generate certificates if needed
+        if "certificate_path" in self.server_config and "private_key_path" in self.server_config:
+            cert_path = self.server_config["certificate_path"]
+            key_path = self.server_config["private_key_path"]
+            
+            # Force regenerate certificates for testing
+            self._generate_certificate(cert_path, key_path)
+            
+            logger.info(f"Certificate path: {cert_path}")
+            logger.info(f"Certificate exists: {os.path.exists(cert_path)}")
+            logger.info(f"Private key exists: {os.path.exists(key_path)}")
 
-        await self.server.init()
-
-        # Set endpoint and security policy
-        self.server.set_endpoint(server_config["endpoint"])
-
-        # Configure security policy based on the config
-        security_policy = server_config.get("security_policy", "None")
+        # Set security policies based on configuration
+        security_policy = self.server_config.get("security_policy", "None")
+        security_mode = self.server_config.get("security_mode", "None")
+        
+        logger.info(f"Security policy: {security_policy}")
+        logger.info(f"Security mode: {security_mode}")
+        
+        # Map string security policy to enum
+        security_policies = []
+        
         if security_policy.lower() == "none":
-            self.server.set_security_policy([ua.SecurityPolicyType.NoSecurity])
+            security_policies = [ua.SecurityPolicyType.NoSecurity]
+        else:
+            # Add NoSecurity for compatibility
+            security_policies = [ua.SecurityPolicyType.NoSecurity]
+            
+            # Add configured security policy
+            if "basic256sha256" in security_policy.lower():
+                if security_mode.lower() == "sign":
+                    security_policies.append(ua.SecurityPolicyType.Basic256Sha256_Sign)
+                elif security_mode.lower() == "signandencrypt":
+                    security_policies.append(ua.SecurityPolicyType.Basic256Sha256_SignAndEncrypt)
+            elif "basic256" in security_policy.lower():
+                if security_mode.lower() == "sign":
+                    security_policies.append(ua.SecurityPolicyType.Basic256_Sign)
+                elif security_mode.lower() == "signandencrypt":
+                    security_policies.append(ua.SecurityPolicyType.Basic256_SignAndEncrypt)
+        
+        logger.info(f"Setting security policies: {security_policies}")
+        self.server.set_security_policy(security_policies)
+
+        self.server.set_endpoint(self.server_config["endpoint"])
 
         # Generate certificates if needed, then load them
-        if "certificate_path" in server_config and "private_key_path" in server_config:
+        if "certificate_path" in self.server_config and "private_key_path" in self.server_config:
             # Ensure certificate exists before loading
-            cert_path = server_config["certificate_path"]
-            key_path = server_config["private_key_path"]
+            cert_path = self.server_config["certificate_path"]
+            key_path = self.server_config["private_key_path"]
 
             # Generate certificates if they don't exist
             self._generate_certificate(cert_path, key_path)
 
-            # Load certificates
-            await self.server.load_certificate(cert_path)
-            await self.server.load_private_key(key_path)
+            # Load certificates before server initialization
+            try:
+                await self.server.load_certificate(cert_path)
+                await self.server.load_private_key(key_path)
+                logger.info("Successfully loaded certificate and key")
+            except Exception as e:
+                logger.error(f"Error loading certificates: {e}")
 
-        # Set server properties from config
-        await self.server.set_application_uri(server_config["uri"])
+        # Now initialize the server with certificates loaded
+        await self.server.init()
 
-        self.server.set_server_name(server_config["name"])
+        self.server.set_server_name(self.server_config["name"])
 
     def load_config(self, config_path: Path):
         """Load server configuration from YAML file
@@ -328,12 +395,12 @@ URI.1 = http://localhost/UA/
                 if "server" not in config:
                     raise KeyError("Missing 'server' configuration")
 
-                server_config = config["server"]
+                self.server_config = config["server"]
                 required_server_fields = ["endpoint", "uri", "name"]
                 missing_fields = [
                     field
                     for field in required_server_fields
-                    if field not in server_config
+                    if field not in self.server_config
                 ]
                 if missing_fields:
                     raise KeyError(
@@ -341,13 +408,13 @@ URI.1 = http://localhost/UA/
                     )
 
                 # Set default values for optional server configurations
-                server_config.setdefault("security_mode", "None")
-                server_config.setdefault("security_policy", "None")
-                server_config.setdefault("certificate_path", "certs/cert.pem")
-                server_config.setdefault("private_key_path", "certs/key.pem")
-                server_config.setdefault("max_clients", 100)
-                server_config.setdefault("max_subscription_lifetime", 3600)
-                server_config.setdefault("discovery_registration_interval", 60)
+                self.server_config.setdefault("security_mode", "None")
+                self.server_config.setdefault("security_policy", "None")
+                self.server_config.setdefault("certificate_path", "certs/cert.pem")
+                self.server_config.setdefault("private_key_path", "certs/key.pem")
+                self.server_config.setdefault("max_clients", 100)
+                self.server_config.setdefault("max_subscription_lifetime", 3600)
+                self.server_config.setdefault("discovery_registration_interval", 60)
 
                 self.config = config
 
@@ -356,7 +423,7 @@ URI.1 = http://localhost/UA/
                     self.plugins = self.plugin_manager.load_plugins(config["plugins"])
 
                 # Initialize server settings
-                security_policy = server_config["security_policy"]
+                security_policy = self.server_config["security_policy"]
                 if security_policy.lower() == "none":
                     self.server.set_security_policy([])  # Empty list for no security
                 else:
