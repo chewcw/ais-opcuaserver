@@ -42,6 +42,7 @@ class Plugin(PluginInterface):
         self.db_tables_config = []
         self.db_tag_config = []
         self.db_polling_interval_in_second = 10
+        self.db_publish_interval_in_second = 1
         self.opcua_config = {}
         self.opcua_tag_config = []
 
@@ -181,6 +182,11 @@ class Plugin(PluginInterface):
                 if "polling_interval_in_second" in self.db_config:
                     self.db_polling_interval_in_second = self.db_config[
                         "polling_interval_in_second"
+                    ]
+
+                if "publish_interval_in_second" in self.db_config:
+                    self.db_publish_interval_in_second = self.db_config[
+                        "publish_interval_in_second"
                     ]
 
         except FileNotFoundError:
@@ -325,21 +331,12 @@ class Plugin(PluginInterface):
                 # Process all returned rows
                 if rows:
                     table_results = []
-                    max_id = last_id
 
                     for result in rows:
                         # Create dictionary from column name and value
                         row_dict = dict(zip(configured_columns, result))
                         table_results.append(row_dict)
 
-                        # Update max_id for checkpoint
-                        if row_dict.get("id", 0) > max_id:
-                            max_id = row_dict["id"]
-
-                    # Update checkpoint for this table with highest ID processed
-                    self.db_checkpoints[table_name] = max_id
-                    # Save the updated checkpoints to file
-                    self._save_checkpoints()
                     results[table_name] = table_results
                 else:
                     results[table_name] = []
@@ -495,6 +492,11 @@ class Plugin(PluginInterface):
                         # Process each row one by one in sequence
                         for row_data in rows:
                             await self._process_row_data(row_data, table_name, server)
+                            # Update checkpoint for this table with the ID processed
+                            # and save the updated checkpoints to file
+                            self.db_checkpoints[table_name] = row_data["id"]
+                            self._save_checkpoints()
+                            await asyncio.sleep(self.db_publish_interval_in_second)
 
                 # Reset error count on successful execution
                 if error_count > 0:
