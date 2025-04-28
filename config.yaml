@@ -9,6 +9,7 @@ server:
   max_client: 100
   max_subscription_lifetime: 3600
   discovery_registration_interval: 60
+  publish_interval_in_second: 1
   user_manager:
     enabled: true
     users:

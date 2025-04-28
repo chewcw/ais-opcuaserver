@@ -14,6 +14,7 @@ from psycopg2.extras import DictCursor
 from src.plugins.aissens_sqldb.map_validator import MapValidator
 from src.plugins.interface import PluginInterface
 from src.server.NamespaceConfig import NamespaceConfig
+from src.server.OPCUAGatewayServer import OPCUAGatewayServer
 
 logger = logging.getLogger(__name__)
 
@@ -182,11 +183,6 @@ class Plugin(PluginInterface):
                 if "polling_interval_in_second" in self.db_config:
                     self.db_polling_interval_in_second = self.db_config[
                         "polling_interval_in_second"
-                    ]
-
-                if "publish_interval_in_second" in self.db_config:
-                    self.db_publish_interval_in_second = self.db_config[
-                        "publish_interval_in_second"
                     ]
 
         except FileNotFoundError:
@@ -464,7 +460,7 @@ class Plugin(PluginInterface):
         # Return the task
         return asyncio.create_task(self._run_loop(server))
 
-    async def _run_loop(self, server):
+    async def _run_loop(self, server: OPCUAGatewayServer):
         """Main plugin operation loop.
 
         Continuously polls the database for new values and updates OPC UA nodes.
@@ -496,7 +492,7 @@ class Plugin(PluginInterface):
                             # and save the updated checkpoints to file
                             self.db_checkpoints[table_name] = row_data["id"]
                             self._save_checkpoints()
-                            await asyncio.sleep(self.db_publish_interval_in_second)
+                            await asyncio.sleep(server.server_config.get("publish_interval_in_second", 1))
 
                 # Reset error count on successful execution
                 if error_count > 0:

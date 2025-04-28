@@ -415,6 +415,7 @@ IP.1 = 127.0.0.1
                 self.server_config.setdefault("max_clients", 100)
                 self.server_config.setdefault("max_subscription_lifetime", 3600)
                 self.server_config.setdefault("discovery_registration_interval", 60)
+                self.server_config.setdefault("publish_interval_in_second", 1)
 
                 self.config = config
 

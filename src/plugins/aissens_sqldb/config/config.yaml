@@ -10,7 +10,6 @@ database:
   user: "postgres"
   password: "postgres"
   polling_interval_in_second: 10
-  publish_interval_in_second: 1
 
   tables:
     - name: "vibration_data"
