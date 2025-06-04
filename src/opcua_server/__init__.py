@@ -2,7 +2,7 @@ import asyncio
 import logging
 import signal
 from pathlib import Path
-from src.server.OPCUAGatewayServer import OPCUAGatewayServer
+from .server.OPCUAGatewayServer import OPCUAGatewayServer
 
 # Configure logging
 logging.basicConfig(
@@ -28,8 +28,25 @@ async def shutdown(server: OPCUAGatewayServer, signal=None):
     logger.info("Shutdown complete")
 
 
-async def main():
-    server = OPCUAGatewayServer(Path("config.yaml"))
+async def async_main():
+    # Try different possible config paths
+    config_paths = [
+        Path("config.yaml"),  # For local development
+        Path("config/config.yaml"),  # Legacy path
+        Path("src/opcua_server/config/config.yaml"),  # Development path
+        Path(__file__).parent / "config" / "config.yaml",  # Relative to package
+    ]
+    
+    config_path = None
+    for path in config_paths:
+        if path.exists():
+            config_path = path
+            break
+    
+    if config_path is None:
+        raise FileNotFoundError(f"Config file not found. Tried: {[str(p) for p in config_paths]}")
+    
+    server = OPCUAGatewayServer(config_path)
 
     # Handle signals
     loop = asyncio.get_running_loop()
@@ -53,5 +70,10 @@ async def main():
         pass
 
 
+def main():
+    """Entry point for the console script."""
+    asyncio.run(async_main())
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

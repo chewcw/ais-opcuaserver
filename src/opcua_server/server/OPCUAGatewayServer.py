@@ -14,9 +14,9 @@ from asyncua.server.history import SubHandler
 from asyncua.server.user_managers import UserManager
 from asyncua.server.users import UserRole, User
 
-from src.server.NamespaceConfig import NamespaceConfig
-from src.server.NodeConfig import NodeConfig
-from src.server.PluginManager import PluginManager
+from .NamespaceConfig import NamespaceConfig
+from .NodeConfig import NodeConfig
+from .PluginManager import PluginManager
 
 logger = logging.getLogger(__name__)
 

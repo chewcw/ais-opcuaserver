@@ -11,10 +11,10 @@ import psycopg2
 import yaml
 from psycopg2.extras import DictCursor
 
-from src.plugins.aissens_sqldb.map_validator import MapValidator
-from src.plugins.interface import PluginInterface
-from src.server.NamespaceConfig import NamespaceConfig
-from src.server.OPCUAGatewayServer import OPCUAGatewayServer
+from .map_validator import MapValidator
+from ..interface import PluginInterface
+from ...server.NamespaceConfig import NamespaceConfig
+from ...server.OPCUAGatewayServer import OPCUAGatewayServer
 
 logger = logging.getLogger(__name__)
 
